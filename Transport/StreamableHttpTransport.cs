@@ -136,6 +136,16 @@ namespace RimWorldMCP.Transport
                     await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
                     response.Close();
                 }
+                else if (request.HttpMethod == "GET")
+                {
+                    // 根路径状态页 — Claude Desktop 激活时首先检查
+                    var json = "{\"status\":\"ok\",\"server\":\"RimWorldMCP\",\"transport\":\"http\",\"endpoints\":[\"/mcp\"]}";
+                    var bytes = Encoding.UTF8.GetBytes(json);
+                    response.ContentType = "application/json";
+                    response.ContentLength64 = bytes.Length;
+                    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                    response.Close();
+                }
                 else
                 {
                     response.StatusCode = 404;

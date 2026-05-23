@@ -79,8 +79,23 @@ namespace RimWorldMCP.Transport
             var request = context.Request;
             var response = context.Response;
 
+            // CORS
+            if (request.Headers.Get("Origin") != null)
+            {
+                response.Headers.Add("Access-Control-Allow-Origin", "*");
+                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            }
+
             try
             {
+                if (request.HttpMethod == "OPTIONS")
+                {
+                    response.StatusCode = 204;
+                    response.Close();
+                    return;
+                }
+
                 if (request.Url?.AbsolutePath == "/sse" && request.HttpMethod == "GET")
                 {
                     await HandleSseConnect(context);
@@ -93,6 +108,16 @@ namespace RimWorldMCP.Transport
                 {
                     var bytes = Encoding.UTF8.GetBytes("OK");
                     response.ContentType = "text/plain";
+                    response.ContentLength64 = bytes.Length;
+                    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                    response.Close();
+                }
+                else if (request.HttpMethod == "GET")
+                {
+                    // 根路径状态页 — Claude Desktop 激活时首先检查
+                    var json = "{\"status\":\"ok\",\"server\":\"RimWorldMCP\",\"transport\":\"sse\",\"endpoints\":[\"/sse\",\"/message\"]}";
+                    var bytes = Encoding.UTF8.GetBytes(json);
+                    response.ContentType = "application/json";
                     response.ContentLength64 = bytes.Length;
                     await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
                     response.Close();
@@ -115,7 +140,7 @@ namespace RimWorldMCP.Transport
             var response = context.Response;
             var sessionId = Guid.NewGuid().ToString("N");
 
-            response.Headers.Add("Content-Type", "text/event-stream");
+            response.ContentType = "text/event-stream";
             response.Headers.Add("Cache-Control", "no-cache");
             response.Headers.Add("Connection", "keep-alive");
 
