@@ -100,15 +100,15 @@ namespace RimWorldMCP.Tools
                                     foundBill.suspended = false;
                                     break;
                                 case "delete":
-                                    foundTable.billStack.Delete(foundBill);
+                                    foundTable!.billStack!.Delete(foundBill);
                                     break;
                                 case "increase_priority":
                                     // Reorder(bill, -1) 提高优先级（向前移动）
-                                    foundTable.billStack.Reorder(foundBill, -1);
+                                    foundTable!.billStack!.Reorder(foundBill, -1);
                                     break;
                                 case "decrease_priority":
                                     // Reorder(bill, +1) 降低优先级（向后移动）
-                                    foundTable.billStack.Reorder(foundBill, +1);
+                                    foundTable!.billStack!.Reorder(foundBill, +1);
                                     break;
                             }
                             return action;

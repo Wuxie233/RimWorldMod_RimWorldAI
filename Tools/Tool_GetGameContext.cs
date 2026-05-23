@@ -83,7 +83,6 @@ namespace RimWorldMCP.Tools
                     var powerNets = map.powerNetManager?.AllNetsListForReading;
                     if (powerNets != null)
                     {
-                        float totalGenerated = 0f, totalUsed = 0f, totalStored = 0f, totalStoredMax = 0f;
                         foreach (var net in powerNets)
                         {
                             // PowerNet has CurrentEnergyGainRate(), CurrentEnergyUsage()

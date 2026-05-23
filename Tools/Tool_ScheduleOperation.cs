@@ -75,7 +75,7 @@ namespace RimWorldMCP.Tools
                                 return $"错误：{recipe.label} ({recipeDefName}) 不是手术配方，不能通过安排手术执行。";
 
                             // 查找身体部位（如果指定）
-                            BodyPartRecord targetPart = null;
+                            BodyPartRecord? targetPart = null;
                             if (!string.IsNullOrEmpty(bodyPartFilter))
                             {
                                 var hediffSet = pawn.health?.hediffSet;
@@ -153,7 +153,7 @@ namespace RimWorldMCP.Tools
                     }
                 };
                 McpCommandQueue.Enqueue(cmd);
-                string resultText = (string)await cmd.Completion.Task;
+                string resultText = (string)(await cmd.Completion.Task)!;
 
                 if (resultText.StartsWith("错误：") || resultText.StartsWith("安排手术失败"))
                     return ToolResult.Error(resultText);

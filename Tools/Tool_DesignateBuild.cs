@@ -82,7 +82,7 @@ namespace RimWorldMCP.Tools
                                 _ => Rot4.North
                             };
 
-                            ThingDef stuff = null;
+                            ThingDef? stuff = null;
                             if (!string.IsNullOrEmpty(stuffDefName))
                             {
                                 stuff = ThingDef.Named(stuffDefName);
@@ -104,7 +104,7 @@ namespace RimWorldMCP.Tools
                     }
                 };
                 McpCommandQueue.Enqueue(cmd);
-                string resultText = (string)await cmd.Completion.Task;
+                string resultText = (string)(await cmd.Completion.Task)!;
 
                 if (resultText.StartsWith("错误：") || resultText.StartsWith("建造蓝图放置失败"))
                     return ToolResult.Error(resultText);

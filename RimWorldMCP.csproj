@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
     <AssemblyName>RimWorldMCP</AssemblyName>
     <RootNamespace>RimWorldMCP</RootNamespace>

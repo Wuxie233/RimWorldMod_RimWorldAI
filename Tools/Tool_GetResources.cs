@@ -154,7 +154,7 @@ namespace RimWorldMCP.Tools
 
             // 食物
             if (def.IsNutritionGivingIngestible || def.ingestible?.foodType != null ||
-                def.IsIngestible && def.ingestible != null && def.ingestible.foodType != null)
+                def.IsIngestible && def.ingestible != null)
                 return "食物";
 
             // 医药

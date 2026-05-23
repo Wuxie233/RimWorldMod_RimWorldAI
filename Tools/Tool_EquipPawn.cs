@@ -97,7 +97,7 @@ namespace RimWorldMCP.Tools
                                 return $"错误：地图上没有任何可用的{itemTypeLabel}。";
 
                             // 匹配物品
-                            Thing matched = FindMatchingThing(candidates, thingLabel, thingDefName);
+                            Thing? matched = FindMatchingThing(candidates, thingLabel, thingDefName);
                             if (matched == null)
                             {
                                 string searchKey = !string.IsNullOrEmpty(thingLabel) ? thingLabel : thingDefName;
@@ -158,7 +158,7 @@ namespace RimWorldMCP.Tools
                     }
                 };
                 McpCommandQueue.Enqueue(cmd);
-                string resultText = (string)await cmd.Completion.Task;
+                string resultText = (string)(await cmd.Completion.Task)!;
 
                 if (resultText.StartsWith("错误：") || resultText.StartsWith("装备操作失败"))
                     return ToolResult.Error(resultText);
@@ -178,7 +178,7 @@ namespace RimWorldMCP.Tools
         /// 在地图物品列表中按 label（模糊）或 defName（精确）查找匹配的物品。
         /// 优先使用 defName 精确匹配，其次使用 label 模糊匹配。
         /// </summary>
-        private static Thing FindMatchingThing(List<Thing> things, string label, string defName)
+        private static Thing? FindMatchingThing(List<Thing> things, string label, string defName)
         {
             if (things == null || things.Count == 0) return null;
 

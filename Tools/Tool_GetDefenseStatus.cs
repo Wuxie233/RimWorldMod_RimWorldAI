@@ -57,9 +57,9 @@ namespace RimWorldMCP.Tools
                             weapon += $" ({quality.Quality.GetLabel()})";
 
                         // 判断远程还是近战
-                        if (primary.def.IsRangedWeapon)
+                        if (primary.def?.IsRangedWeapon == true)
                             rangedCount++;
-                        else if (primary.def.IsMeleeWeapon)
+                        else if (primary.def?.IsMeleeWeapon == true)
                             meleeCount++;
                     }
                     else

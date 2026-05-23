@@ -137,7 +137,7 @@ namespace RimWorldMCP.Tools
                             if (wallDef == null)
                                 return $"错误：找不到墙体 ThingDef: {wallDefName}。请确认 DefName 拼写正确。";
 
-                            ThingDef doorDef = null;
+                            ThingDef? doorDef = null;
                             if (doorCount > 0)
                             {
                                 doorDef = ThingDef.Named(doorDefName);
@@ -145,7 +145,7 @@ namespace RimWorldMCP.Tools
                                     return $"错误：找不到门 ThingDef: {doorDefName}。请确认 DefName 拼写正确。";
                             }
 
-                            ThingDef floorDef = null;
+                            ThingDef? floorDef = null;
                             if (floorCount > 0)
                             {
                                 floorDef = ThingDef.Named(floorDefName);
@@ -165,7 +165,7 @@ namespace RimWorldMCP.Tools
                                     try
                                     {
                                         GenConstruct.PlaceBlueprintForBuild(
-                                            (BuildableDef)doorDef, new IntVec3(wx, wy, centerZ),
+                                            (BuildableDef)doorDef!, new IntVec3(wx, wy, centerZ),
                                             map, Rot4.North, Faction.OfPlayer, null);
                                         placedDoors++;
                                     }
@@ -232,7 +232,7 @@ namespace RimWorldMCP.Tools
                     }
                 };
                 McpCommandQueue.Enqueue(cmd);
-                string resultText = (string)await cmd.Completion.Task;
+                string resultText = (string)(await cmd.Completion.Task)!;
 
                 if (resultText.StartsWith("错误：") || resultText.StartsWith("房间建造失败"))
                     return ToolResult.Error(resultText);

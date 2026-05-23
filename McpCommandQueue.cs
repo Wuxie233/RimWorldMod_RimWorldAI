@@ -7,7 +7,7 @@ namespace RimWorldMCP
 {
     public class McpCommand
     {
-        public Func<object?> Action { get; set; }
+        public Func<object?> Action { get; set; } = null!;
         public TaskCompletionSource<object?> Completion { get; set; } = new();
         public CancellationTokenSource Timeout { get; set; } = new(TimeSpan.FromSeconds(5));
     }

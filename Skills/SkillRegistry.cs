@@ -100,8 +100,8 @@ namespace RimWorldMCP.Skills
 
             return new SkillInfo
             {
-                Name = name,
-                Description = description ?? name,
+                Name = name!,
+                Description = description ?? name!,
                 Content = content,
                 FilePath = filePath
             };
