@@ -26,15 +26,15 @@ namespace RimWorldMCP.Transport
             _port = port;
         }
 
-        public async Task StartAsync(CancellationToken ct)
+        public Task StartAsync(CancellationToken ct)
         {
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{_port}/");
             _listener.Start();
             Log($"SSE 服务器已启动: http://localhost:{_port}");
 
-            _ = Task.Run(() => AcceptLoop(ct), ct);
-            await Task.CompletedTask;
+            Task.Run(() => AcceptLoop(ct), ct);
+            return Task.CompletedTask;
         }
 
         public async Task SendAsync(string message)
