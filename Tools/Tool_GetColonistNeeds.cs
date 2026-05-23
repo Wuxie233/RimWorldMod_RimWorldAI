@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -17,31 +21,93 @@ namespace RimWorldMCP.Tools
 
         public Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            var nameFilter = "";
-            if (args != null && args.Value.TryGetProperty("colonist_name", out var n)) nameFilter = n.GetString() ?? "";
-
-            var colonists = new[]
+            try
             {
-                new { name="王建国", mood="78%", food="65%", rest="82%", joy="55%", beauty="70%", comfort="60%", outdoors="35%", issues="娱乐偏低" },
-                new { name="李秀英", mood="85%", food="90%", rest="75%", joy="70%", beauty="65%", comfort="50%", outdoors="20%", issues="户外偏低、舒适偏低" },
-                new { name="张铁柱", mood="65%", food="80%", rest="60%", joy="40%", beauty="55%", comfort="45%", outdoors="50%", issues="娱乐严重偏低、休息偏低" },
-                new { name="赵大力", mood="72%", food="70%", rest="90%", joy="60%", beauty="60%", comfort="70%", outdoors="65%", issues="" },
-                new { name="刘小芳", mood="55%", food="75%", rest="85%", joy="30%", beauty="40%", comfort="35%", outdoors="15%", issues="心情低落 + 娱乐极低 + 舒适极低" },
-            };
+                string nameFilter = "";
+                if (args != null && args.Value.TryGetProperty("colonist_name", out var n))
+                    nameFilter = n.GetString() ?? "";
 
-            var filtered = colonists.AsEnumerable();
-            if (!string.IsNullOrEmpty(nameFilter))
-                filtered = filtered.Where(c => c.name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+                var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                if (colonists == null || colonists.Count == 0)
+                    return Task.FromResult(ToolResult.Success("## 殖民者需求状态\n\n暂无自由殖民者。"));
 
-            var lines = filtered.Select(c =>
+                IEnumerable<Pawn> filtered = colonists;
+                if (!string.IsNullOrEmpty(nameFilter))
+                    filtered = colonists.Where(c =>
+                        c.Name.ToStringShort.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        c.Name.ToStringFull.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                var items = filtered.ToList();
+                if (items.Count == 0)
+                    return Task.FromResult(ToolResult.Success("没有匹配的殖民者。"));
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"## 殖民者需求状态 ({items.Count} 人)");
+
+                foreach (var pawn in items)
+                {
+                    string name = pawn.Name.ToStringShort;
+                    sb.AppendLine();
+                    sb.AppendLine($"### {name}");
+
+                    var needs = pawn.needs?.AllNeeds;
+                    if (needs == null || needs.Count == 0)
+                    {
+                        sb.AppendLine("- 无需求数据");
+                        continue;
+                    }
+
+                    var issues = new List<string>();
+
+                    foreach (var need in needs)
+                    {
+                        if (need == null) continue;
+
+                        try
+                        {
+                            float curLevel = need.CurLevelPercentage;
+                            string label = need.def?.LabelCap ?? need.LabelCap;
+                            string bar = BuildBar(curLevel);
+                            int pct = (int)(curLevel * 100);
+                            sb.AppendLine($"- {label} {bar} {pct}%");
+
+                            // 标记过低的项
+                            if (curLevel < 0.25f)
+                                issues.Add($"{label}极低({pct}%)");
+                            else if (curLevel < 0.40f)
+                                issues.Add($"{label}偏低({pct}%)");
+                        }
+                        catch (Exception)
+                        {
+                            try
+                            {
+                                sb.AppendLine($"- {need.def?.LabelCap ?? "未知需求"}: 数据不可用");
+                            }
+                            catch (Exception) { }
+                        }
+                    }
+
+                    if (issues.Count > 0)
+                    {
+                        sb.AppendLine($"- ⚠ 问题: {string.Join(", ", issues)}");
+                    }
+                }
+
+                return Task.FromResult(ToolResult.Success(sb.ToString()));
+            }
+            catch (Exception ex)
             {
-                var needs = $"  心情: {c.mood} | 食物: {c.food} | 休息: {c.rest} | 娱乐: {c.joy} | 美观: {c.beauty} | 舒适: {c.comfort} | 户外: {c.outdoors}";
-                var issueLine = string.IsNullOrEmpty(c.issues) ? "" : $"\n  ⚠ {c.issues}";
-                return $"- {c.name}:" + needs + issueLine;
-            }).ToList();
+                return Task.FromResult(ToolResult.Error($"get_colonist_needs 执行失败: {ex.Message}"));
+            }
+        }
 
-            var result = lines.Count > 0 ? $"殖民者需求状态 ({lines.Count} 人):\n\n{string.Join("\n\n", lines)}" : "没有匹配的殖民者。";
-            return Task.FromResult(ToolResult.Success(result));
+        private static string BuildBar(float pct)
+        {
+            // 生成一个 10 段的进度条
+            int filled = (int)Math.Round(pct * 10);
+            filled = Math.Max(0, Math.Min(10, filled));
+            string bar = new string('#', filled) + new string('_', 10 - filled);
+            return $"[{bar}]";
         }
     }
 }

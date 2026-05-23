@@ -1,5 +1,10 @@
+using System;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -13,24 +18,95 @@ namespace RimWorldMCP.Tools
             properties = new
             {
                 colonist_name = new { type = "string", description = "殖民者名称" },
-                work_type = new { type = "string", description = "工作类型", @enum = new[] { "Crafting", "Cooking", "Construction", "Mining", "Growing", "Research", "Smithing", "Tailoring", "Hauling", "Cleaning", "Warden", "Hunting", "Art", "PlantCutting", "Doctor", "Patient", "Firefighter" } },
+                work_type = new { type = "string", description = "工作类型 defName", @enum = new[] { "Crafting", "Cooking", "Construction", "Mining", "Growing", "Research", "Smithing", "Tailoring", "Hauling", "Cleaning", "Warden", "Hunting", "Art", "PlantCutting", "Doctor", "Patient", "Firefighter" } },
                 priority = new { type = "integer", description = "优先级: 0=不分配, 1=最高, 2=高, 3=普通, 4=最低", minimum = 0, maximum = 4 }
             },
             required = new[] { "colonist_name", "work_type", "priority" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数"));
-            if (!args.Value.TryGetProperty("colonist_name", out var cn)) return Task.FromResult(ToolResult.Error("缺少 colonist_name"));
-            if (!args.Value.TryGetProperty("work_type", out var wt)) return Task.FromResult(ToolResult.Error("缺少 work_type"));
-            if (!args.Value.TryGetProperty("priority", out var p) || !p.TryGetInt32(out var priority)) return Task.FromResult(ToolResult.Error("缺少 priority"));
-            if (priority < 0 || priority > 4) return Task.FromResult(ToolResult.Error("priority 必须在 0-4 之间"));
+            if (args == null) return ToolResult.Error("缺少参数");
+            if (!args.Value.TryGetProperty("colonist_name", out var cn))
+                return ToolResult.Error("缺少 colonist_name");
+            if (!args.Value.TryGetProperty("work_type", out var wt))
+                return ToolResult.Error("缺少 work_type");
+            if (!args.Value.TryGetProperty("priority", out var p) || !p.TryGetInt32(out var priority))
+                return ToolResult.Error("缺少有效的 priority");
+            if (priority < 0 || priority > 4)
+                return ToolResult.Error("priority 必须在 0-4 之间。0=不分配, 1=最高优先, 4=最低优先。");
 
-            var colonist = cn.GetString() ?? "";
-            var workType = wt.GetString() ?? "";
-            var priorityText = priority == 0 ? "不分配" : $"优先级 {priority}";
-            return Task.FromResult(ToolResult.Success($"已将 {colonist} 的 {workType} 设为 {priorityText}。"));
+            var colonistName = cn.GetString() ?? "";
+            var workTypeDefName = wt.GetString() ?? "";
+
+            if (string.IsNullOrWhiteSpace(colonistName))
+                return ToolResult.Error("colonist_name 不能为空。");
+            if (string.IsNullOrWhiteSpace(workTypeDefName))
+                return ToolResult.Error("work_type 不能为空。");
+
+            try
+            {
+                // 查找殖民者（模糊匹配）
+                var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                if (colonists == null || colonists.Count == 0)
+                    return ToolResult.Error("当前没有殖民者。");
+
+                var pawn = colonists.FirstOrDefault(c =>
+                    c.Name.ToStringShort.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0
+                    || c.Name.ToStringFull.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                if (pawn == null)
+                    return ToolResult.Error($"未找到匹配的殖民者: {colonistName}。使用 get_colonists 查看可用殖民者。");
+
+                // 检查 workSettings 可用性
+                if (pawn.workSettings == null)
+                    return ToolResult.Error($"{pawn.Name.ToStringShort} 没有工作设置（可能不是殖民者）。");
+
+                // 查找工作类型
+                var workTypeDef = DefDatabase<WorkTypeDef>.GetNamed(workTypeDefName, errorOnFail: false);
+                if (workTypeDef == null)
+                    return ToolResult.Error($"未知工作类型: {workTypeDefName}。请使用 get_colonists 查看可用工作类型。");
+
+                var pawnShortName = pawn.Name.ToStringShort;
+                var workLabel = workTypeDef.labelShort ?? workTypeDef.label ?? workTypeDefName;
+
+                // 通过 McpCommandQueue 在主线程上执行操作
+                var result = await Task.Run(() =>
+                {
+                    var tcs = new TaskCompletionSource<object?>();
+                    McpCommandQueue.Enqueue(new McpCommand
+                    {
+                        Action = () =>
+                        {
+                            pawn.workSettings.SetPriority(workTypeDef, priority);
+                            return workLabel;
+                        },
+                        Completion = tcs
+                    });
+                    return tcs.Task;
+                });
+
+                var priorityText = priority switch
+                {
+                    0 => "不分配",
+                    1 => "最高优先 (1)",
+                    2 => "高优先 (2)",
+                    3 => "普通 (3)",
+                    4 => "最低优先 (4)",
+                    _ => $"优先级 {priority}"
+                };
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"已更新 {pawnShortName} 的工作优先级:");
+                sb.AppendLine($"- 工作: {workLabel} ({workTypeDefName})");
+                sb.AppendLine($"- 优先级: {priorityText}");
+
+                return ToolResult.Success(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"设置工作优先级失败: {ex.Message}");
+            }
         }
     }
 }

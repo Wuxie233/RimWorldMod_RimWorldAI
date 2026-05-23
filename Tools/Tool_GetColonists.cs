@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -17,26 +21,192 @@ namespace RimWorldMCP.Tools
 
         public Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            var nameFilter = "";
-            if (args != null && args.Value.TryGetProperty("colonist_name", out var n)) nameFilter = n.GetString() ?? "";
-
-            var colonists = new[]
+            try
             {
-                new { name="王建国", age="34岁男", mood="78% (满意)", skills="建造12* | 采矿8 | 射击10**", health="健康", equipment="栓动步枪(优秀)", work="建造屋顶", workPrio="建造1 采矿2 搬运3" },
-                new { name="李秀英", age="28岁女", mood="85% (愉快)", skills="烹饪14** | 缝纫10* | 种植7", health="健康", equipment="无", work="烹饪简单食物", workPrio="烹饪1 缝纫2 种植3" },
-                new { name="张铁柱", age="42岁男", mood="65% (一般)", skills="锻造16** | 手工12* | 采矿10", health="右手旧伤(效率-10%)", equipment="长剑(极佳)", work="锻造长剑", workPrio="锻造1 手工2 采矿3" },
-                new { name="陈美玲", age="23岁女", mood="90% (非常愉快)", skills="种植11* | 驯兽8 | 医疗7", health="左手轻微擦伤", equipment="无", work="收割稻米", workPrio="种植1 驯兽2 医疗3" },
-                new { name="赵大力", age="31岁男", mood="72% (满意)", skills="射击14** | 格斗10* | 采矿6", health="健康", equipment="突击步枪(良好)+防弹背心", work="巡逻", workPrio="射击1 格斗2 采矿3" },
-                new { name="刘小芳", age="19岁女", mood="55% (低落)", skills="研究10* | 医疗9* | 社交7", health="轻度食物中毒", equipment="无", work="研究微型电子学", workPrio="研究1 医疗2 社交3" },
-            };
+                string nameFilter = "";
+                if (args != null && args.Value.TryGetProperty("colonist_name", out var n))
+                    nameFilter = n.GetString() ?? "";
 
-            var filtered = colonists.AsEnumerable();
-            if (!string.IsNullOrEmpty(nameFilter))
-                filtered = filtered.Where(c => c.name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+                var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                if (colonists == null || colonists.Count == 0)
+                    return Task.FromResult(ToolResult.Success("## 殖民者\n\n暂无自由殖民者。"));
 
-            var lines = filtered.Select(c => $"- {c.name} ({c.age}) | 心情: {c.mood} | 健康: {c.health}\n  技能: {c.skills}\n  装备: {c.equipment} | 当前: {c.work}\n  工作优先级: {c.workPrio}").ToList();
-            var result = lines.Count > 0 ? $"殖民者 ({lines.Count} 人):\n\n" + string.Join("\n\n", lines) : "没有匹配的殖民者。";
-            return Task.FromResult(ToolResult.Success(result));
+                // 按名称过滤
+                IEnumerable<Pawn> filtered = colonists;
+                if (!string.IsNullOrEmpty(nameFilter))
+                    filtered = colonists.Where(c => c.Name.ToStringShort.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                        || c.Name.ToStringFull.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                var items = filtered.ToList();
+                if (items.Count == 0)
+                    return Task.FromResult(ToolResult.Success("没有匹配的殖民者。"));
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"## 殖民者 ({items.Count} 人)");
+
+                foreach (var pawn in items)
+                {
+                    string name = pawn.Name.ToStringShort;
+                    int age = pawn.ageTracker?.AgeBiologicalYears ?? 0;
+                    string gender = pawn.gender switch
+                    {
+                        Gender.Male => "男",
+                        Gender.Female => "女",
+                        _ => "?"
+                    };
+
+                    // 心情
+                    float moodPct = pawn.needs?.mood?.CurLevelPercentage ?? -1f;
+                    string moodStr = moodPct >= 0 ? $"{(int)(moodPct * 100)}%" : "N/A";
+                    string moodLabel = GetMoodLabel(moodPct);
+
+                    // 健康摘要
+                    string healthSummary = GetHealthSummary(pawn);
+
+                    // 技能 Top 3
+                    string skillsStr = GetTopSkills(pawn);
+
+                    // 装备
+                    string equipmentStr = GetEquipmentSummary(pawn);
+
+                    // 工作优先级
+                    string workPriorities = GetWorkPriorities(pawn);
+
+                    sb.AppendLine();
+                    sb.AppendLine($"### {name}");
+                    sb.AppendLine($"- 年龄: {age} | 性别: {gender} | 心情: {moodStr} ({moodLabel})");
+                    sb.AppendLine($"- 健康: {healthSummary}");
+                    sb.AppendLine($"- 技能: {skillsStr}");
+                    sb.AppendLine($"- 装备: {equipmentStr}");
+                    sb.AppendLine($"- 工作优先级: {workPriorities}");
+                }
+
+                return Task.FromResult(ToolResult.Success(sb.ToString()));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(ToolResult.Error($"get_colonists 执行失败: {ex.Message}"));
+            }
+        }
+
+        private static string GetMoodLabel(float pct)
+        {
+            if (pct < 0) return "无";
+            if (pct >= 0.85f) return "非常愉快";
+            if (pct >= 0.65f) return "满意";
+            if (pct >= 0.40f) return "一般";
+            if (pct >= 0.15f) return "低落";
+            return "崩溃边缘";
+        }
+
+        private static string GetHealthSummary(Pawn pawn)
+        {
+            try
+            {
+                var hediffs = pawn.health?.hediffSet?.hediffs;
+                if (hediffs == null || hediffs.Count == 0) return "健康";
+
+                var injuries = new List<string>();
+                foreach (var h in hediffs)
+                {
+                    if (!h.Visible) continue;
+                    if (h.def.defName == "Anesthetic" || h.def.defName == "Sedated") continue;
+
+                    string part = h.Part?.Label ?? "";
+                    string severity = h.Severity > 0.01f ? $" ({h.Severity * 100:F0}%)" : "";
+                    string line;
+                    if (!string.IsNullOrEmpty(part))
+                        line = $"{h.Label}{severity}({part})";
+                    else
+                        line = $"{h.Label}{severity}";
+                    injuries.Add(line);
+                }
+
+                return injuries.Count > 0 ? string.Join("; ", injuries) : "健康";
+            }
+            catch (Exception) { return "无法读取"; }
+        }
+
+        private static string GetTopSkills(Pawn pawn)
+        {
+            try
+            {
+                var skills = pawn.skills?.skills;
+                if (skills == null || skills.Count == 0) return "无技能";
+
+                var top3 = skills
+                    .Where(s => s.Level > 0)
+                    .OrderByDescending(s => s.Level)
+                    .Take(3)
+                    .Select(s =>
+                    {
+                        string passion = s.passion switch
+                        {
+                            Passion.Major => "**",
+                            Passion.Minor => "*",
+                            _ => ""
+                        };
+                        return $"{s.def.label}{s.Level}{passion}";
+                    });
+
+                return string.Join(" | ", top3);
+            }
+            catch (Exception) { return "无法读取"; }
+        }
+
+        private static string GetEquipmentSummary(Pawn pawn)
+        {
+            try
+            {
+                var parts = new List<string>();
+
+                // 武器
+                var weapon = pawn.equipment?.Primary;
+                if (weapon != null)
+                {
+                    string weaponLabel = weapon.Label;
+                    parts.Add(weaponLabel);
+                }
+
+                // 护甲（简化：列出主要装备）
+                var apparel = pawn.apparel?.WornApparel;
+                if (apparel != null)
+                {
+                    foreach (var a in apparel.Take(4))
+                    {
+                        parts.Add(a.Label);
+                    }
+                }
+
+                return parts.Count > 0 ? string.Join(" + ", parts) : "无装备";
+            }
+            catch (Exception) { return "无法读取"; }
+        }
+
+        private static string GetWorkPriorities(Pawn pawn)
+        {
+            try
+            {
+                var workSettings = pawn.workSettings;
+                if (workSettings == null) return "无";
+
+                var activePriorities = new List<string>();
+                var allWorkTypes = DefDatabase<WorkTypeDef>.AllDefsListForReading;
+                foreach (var wt in allWorkTypes)
+                {
+                    try
+                    {
+                        int priority = workSettings.GetPriority(wt);
+                        if (priority > 0)
+                            activePriorities.Add($"{wt.labelShort}:{priority}");
+                    }
+                    catch (Exception) { }
+                }
+
+                var top = activePriorities.OrderBy(p => int.Parse(p.Split(':').Last())).Take(6);
+                return activePriorities.Count > 0 ? string.Join(" ", top) : "未设置";
+            }
+            catch (Exception) { return "无法读取"; }
         }
     }
 }

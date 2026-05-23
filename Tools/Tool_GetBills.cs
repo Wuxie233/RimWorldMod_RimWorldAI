@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -12,30 +16,118 @@ namespace RimWorldMCP.Tools
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
-            properties = new { workbench_filter = new { type = "string", description = "按工作台类型过滤" } }
+            properties = new { workbench_filter = new { type = "string", description = "按工作台类型 defName 或名称过滤" } }
         });
 
         public Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            var filter = "";
-            if (args != null && args.Value.TryGetProperty("workbench_filter", out var f)) filter = f.GetString() ?? "";
-
-            var bills = new[]
+            try
             {
-                new { workbench="裁缝台", item="高级衬衫", mode="目标数量", info="2/3 已完成 | 进行中", paused=false },
-                new { workbench="裁缝台", item="防弹夹克", mode="重复2次", info="剩余 2 次 | 暂停", paused=true },
-                new { workbench="锻造台", item="长剑", mode="重复1次", info="剩余 1 次 | 进行中", paused=false },
-                new { workbench="锻造台", item="板甲", mode="重复2次", info="剩余 2 次 | 暂停", paused=true },
-                new { workbench="炉灶", item="简单食物", mode="永久", info="进行中", paused=false },
-            };
+                var filter = "";
+                if (args != null && args.Value.TryGetProperty("workbench_filter", out var f))
+                    filter = f.GetString() ?? "";
 
-            var filtered = bills.AsEnumerable();
-            if (!string.IsNullOrEmpty(filter))
-                filtered = filtered.Where(b => b.workbench.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
+                var map = Find.CurrentMap;
+                if (map == null)
+                    return Task.FromResult(ToolResult.Error("当前没有可用地图。"));
 
-            var lines = filtered.Select((b, i) => $"  [{i}] {b.workbench}: {b.item} | {b.mode} | {b.info} {(b.paused ? "暂停" : "运行中")}").ToList();
-            var result = lines.Count > 0 ? $"当前工作单 ({lines.Count} 个):\n" + string.Join("\n", lines) : "当前没有匹配的工作单。";
-            return Task.FromResult(ToolResult.Success(result));
+                var tables = map.listerBuildings.AllBuildingsColonistOfClass<Building_WorkTable>().ToList();
+                if (tables.Count == 0)
+                    return Task.FromResult(ToolResult.Success("当前殖民地没有任何工作台。"));
+
+                var sb = new StringBuilder();
+                sb.AppendLine("## 当前工作单");
+                sb.AppendLine();
+
+                var billIndex = 0;
+                var totalBills = 0;
+                var hasAnyMatch = false;
+
+                foreach (var table in tables)
+                {
+                    var tableLabel = table.def?.label ?? table.def?.defName ?? "???";
+                    var tableDefName = table.def?.defName ?? "???";
+
+                    var bills = table.billStack?.Bills;
+                    if (bills == null || bills.Count == 0)
+                        continue;
+
+                    // 按工作台过滤
+                    if (!string.IsNullOrEmpty(filter))
+                    {
+                        if (tableLabel.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0 &&
+                            tableDefName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
+                            continue;
+                    }
+
+                    hasAnyMatch = true;
+                    sb.AppendLine($"### {tableLabel} (`{tableDefName}`)");
+                    sb.AppendLine();
+                    sb.AppendLine("| 索引 | 单据 | 模式 | 详情 | 状态 |");
+                    sb.AppendLine("|------|------|------|------|------|");
+
+                    for (int i = 0; i < bills.Count; i++)
+                    {
+                        var bill = bills[i];
+                        var label = bill.Label ?? "???";
+                        var suspended = bill.suspended;
+                        var statusText = suspended ? "暂停" : "运行中";
+
+                        var modeText = "-";
+                        var detailText = "-";
+
+                        if (bill is Bill_Production prod)
+                        {
+                            if (prod.repeatMode == BillRepeatModeDefOf.Forever)
+                            {
+                                modeText = "永久重复";
+                            }
+                            else if (prod.repeatMode == BillRepeatModeDefOf.RepeatCount)
+                            {
+                                modeText = "重复指定次数";
+                                var target = prod.targetCount;
+                                var current = prod.repeatCount;
+                                detailText = $"目标 {target} 次, 已完成 {current} 次";
+                            }
+                            else if (prod.repeatMode == BillRepeatModeDefOf.TargetCount)
+                            {
+                                modeText = "目标数量";
+                                var target = prod.targetCount;
+                                detailText = $"目标 {target} 件";
+                            }
+                            else
+                            {
+                                modeText = prod.repeatMode?.label ?? "单次";
+                            }
+
+                            if (prod.paused)
+                                statusText = "已暂停(手动)";
+                        }
+
+                        sb.AppendLine($"| [{billIndex}] | {label} | {modeText} | {detailText} | {statusText} |");
+                        billIndex++;
+                        totalBills++;
+                    }
+
+                    sb.AppendLine();
+                }
+
+                if (!hasAnyMatch)
+                {
+                    if (!string.IsNullOrEmpty(filter))
+                        return Task.FromResult(ToolResult.Success($"没有匹配过滤条件 \"{filter}\" 的工作单。"));
+                    else
+                        return Task.FromResult(ToolResult.Success("当前没有工作单。"));
+                }
+
+                sb.AppendLine($"**统计**: 共 {totalBills} 个工作单, 分布在工作台。");
+
+                return Task.FromResult(ToolResult.Success(sb.ToString()));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(ToolResult.Error($"获取工作单列表失败: {ex.Message}"));
+            }
         }
     }
 }

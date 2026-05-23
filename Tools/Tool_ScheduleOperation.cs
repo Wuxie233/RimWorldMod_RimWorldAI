@@ -1,53 +1,172 @@
-using System.Collections.Generic;
+using System;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
     public class Tool_ScheduleOperation : ITool
     {
         public string Name => "schedule_operation";
-        public string Description => "为殖民者安排手术或医疗操作。⚠ 手术有失败风险。";
+        public string Description => "为殖民者安排手术或医疗操作。注意：手术有失败风险，失败可能导致死亡。";
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
                 colonist_name = new { type = "string", description = "要接受手术的殖民者名称" },
-                recipe_defName = new { type = "string", description = "手术配方 defName，如 InstallBionicArm" },
-                body_part = new { type = "string", description = "目标身体部位（可选）" }
+                recipe_defName = new { type = "string", description = "手术配方 DefName，如 InstallBionicArm" },
+                body_part = new { type = "string", description = "目标身体部位标签（可选），如 左臂、右眼。不传则自动选择。" }
             },
             required = new[] { "colonist_name", "recipe_defName" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数"));
-            if (!args.Value.TryGetProperty("colonist_name", out var cn)) return Task.FromResult(ToolResult.Error("缺少 colonist_name"));
-            if (!args.Value.TryGetProperty("recipe_defName", out var rn)) return Task.FromResult(ToolResult.Error("缺少 recipe_defName"));
+            // ---- 参数验证 ----
+            if (args == null) return ToolResult.Error("缺少参数");
+            if (!args.Value.TryGetProperty("colonist_name", out var jName))
+                return ToolResult.Error("缺少必填参数: colonist_name");
+            if (!args.Value.TryGetProperty("recipe_defName", out var jRecipe))
+                return ToolResult.Error("缺少必填参数: recipe_defName");
 
-            var colonist = cn.GetString() ?? "";
-            var recipe = rn.GetString() ?? "";
-            var bodyPart = "";
-            if (args.Value.TryGetProperty("body_part", out var bp)) bodyPart = bp.GetString() ?? "";
+            string colonistName = jName.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(colonistName))
+                return ToolResult.Error("colonist_name 不能为空");
 
-            var knownSurgeries = new Dictionary<string, (string label, string risk, string requires)>
+            string recipeDefName = jRecipe.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(recipeDefName))
+                return ToolResult.Error("recipe_defName 不能为空");
+
+            string bodyPartFilter = "";
+            if (args.Value.TryGetProperty("body_part", out var jPart))
+                bodyPartFilter = jPart.GetString() ?? "";
+
+            // ---- 通过 McpCommandQueue 在主线程执行 RimWorld API 调用 ----
+            try
             {
-                ["InstallBionicArm"] = ("安装仿生手臂", "低（失败致死率 2%）", "仿生手臂 x1 + 医药 x2"),
-                ["InstallBionicLeg"] = ("安装仿生腿", "低（失败致死率 2%）", "仿生腿 x1 + 医药 x2"),
-                ["InstallBionicEye"] = ("安装仿生眼", "极低（失败致死率 1%）", "仿生眼 x1 + 医药 x2"),
-                ["InstallBionicHeart"] = ("安装仿生心脏", "中等（失败致死率 10%）", "仿生心脏 x1 + 医药 x3"),
-                ["RemoveCarcinoma"] = ("切除癌症", "中等（失败致死率 8%）", "医药 x2"),
-                ["Euthanize"] = ("安乐死", "零（必然成功）", "医药 x1"),
-            };
+                var cmd = new McpCommand
+                {
+                    Action = () =>
+                    {
+                        try
+                        {
+                            // 查找殖民者
+                            var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                            if (colonists == null || colonists.Count == 0)
+                                return "错误：当前没有自由殖民者。";
 
-            if (!knownSurgeries.TryGetValue(recipe, out var info))
-                return Task.FromResult(ToolResult.Error($"未知手术配方: {recipe}。已知: {string.Join(", ", knownSurgeries.Keys)}"));
+                            Pawn pawn = colonists.FirstOrDefault(c =>
+                                c.Name.ToStringShort.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                c.Name.ToStringFull.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0);
+                            if (pawn == null)
+                                return $"错误：找不到殖民者: {colonistName}";
 
-            var bpText = string.IsNullOrEmpty(bodyPart) ? "" : $" (部位: {bodyPart})";
-            return Task.FromResult(ToolResult.Success(
-                $"已为 {colonist} 安排手术: {info.label} ({recipe}){bpText}\n" +
-                $"- 风险等级: {info.risk}\n- 所需材料: {info.requires}"));
+                            // 查找 RecipeDef
+                            RecipeDef recipe = DefDatabase<RecipeDef>.GetNamedSilentFail(recipeDefName);
+                            if (recipe == null)
+                                return $"错误：找不到手术配方: {recipeDefName}。请确认 DefName 拼写正确。";
+
+                            // 验证是否为手术
+                            if (!recipe.IsSurgery)
+                                return $"错误：{recipe.label} ({recipeDefName}) 不是手术配方，不能通过安排手术执行。";
+
+                            // 查找身体部位（如果指定）
+                            BodyPartRecord targetPart = null;
+                            if (!string.IsNullOrEmpty(bodyPartFilter))
+                            {
+                                var hediffSet = pawn.health?.hediffSet;
+                                if (hediffSet == null)
+                                    return "错误：无法读取殖民者健康信息。";
+
+                                var availableParts = hediffSet.GetNotMissingParts();
+                                if (availableParts == null || !availableParts.Any())
+                                    return $"错误：{pawn.Name.ToStringShort} 没有可用的身体部位。";
+
+                                // 按标签模糊匹配
+                                targetPart = availableParts.FirstOrDefault(p =>
+                                    p.Label != null &&
+                                    p.Label.IndexOf(bodyPartFilter, StringComparison.OrdinalIgnoreCase) >= 0);
+                                if (targetPart == null)
+                                {
+                                    // 列出可用部位帮助用户
+                                    var partLabels = availableParts.Select(p => p.Label).Take(10).ToArray();
+                                    return $"错误：在 {pawn.Name.ToStringShort} 身上找不到匹配 '{bodyPartFilter}' 的身体部位。" +
+                                           $"可用部位示例: {string.Join(", ", partLabels)}";
+                                }
+                            }
+
+                            // 获取 BillStack
+                            BillStack billStack = pawn.BillStack;
+                            if (billStack == null)
+                                return $"错误：无法访问 {pawn.Name.ToStringShort} 的手术队列。";
+
+                            // 创建并配置手术单据
+                            // Bill_Medical 构造函数: (RecipeDef recipe, List<Thing> uniqueIngredients)
+                            Bill_Medical bill = new Bill_Medical(recipe, null);
+                            if (targetPart != null)
+                            {
+                                bill.Part = targetPart;
+                            }
+
+                            // 添加单据
+                            billStack.AddBill(bill);
+
+                            // 构建返回信息
+                            var sb = new StringBuilder();
+                            sb.AppendLine($"已为 {pawn.Name.ToStringShort} 安排手术: {recipe.label} ({recipeDefName})");
+
+                            if (targetPart != null)
+                                sb.AppendLine($"- 目标部位: {targetPart.Label}");
+
+                            // 失败致死率
+                            float deathChance = recipe.deathOnFailedSurgeryChance;
+                            if (deathChance > 0f && deathChance < 1f)
+                            {
+                                string riskLevel = deathChance <= 0.02f ? "极低" :
+                                    deathChance <= 0.05f ? "低" :
+                                    deathChance <= 0.15f ? "中等" :
+                                    deathChance <= 0.30f ? "高" : "极高";
+                                sb.AppendLine($"- 失败致死率: {deathChance * 100:F0}%（{riskLevel}风险）");
+
+                                if (deathChance >= 0.15f)
+                                    sb.AppendLine($"- 警告：该手术有较高致死风险，请确保医生技能充足并在清洁环境中进行。");
+                            }
+                            else if (deathChance >= 1f)
+                            {
+                                sb.AppendLine($"- 失败致死率: 100%（失败必死）");
+                            }
+                            else
+                            {
+                                sb.AppendLine($"- 失败致死率: 无（失败不会直接致死）");
+                            }
+
+                            return sb.ToString().TrimEnd();
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"安排手术失败: {ex.Message}";
+                        }
+                    }
+                };
+                McpCommandQueue.Enqueue(cmd);
+                string resultText = (string)await cmd.Completion.Task;
+
+                if (resultText.StartsWith("错误：") || resultText.StartsWith("安排手术失败"))
+                    return ToolResult.Error(resultText);
+                return ToolResult.Success(resultText);
+            }
+            catch (TimeoutException)
+            {
+                return ToolResult.Error("手术命令执行超时（5秒内未被主线程处理），请重试。");
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"手术命令执行异常: {ex.Message}");
+            }
         }
     }
 }

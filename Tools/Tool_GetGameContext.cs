@@ -1,6 +1,11 @@
 using System;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
+using RimWorld.Planet;
 
 namespace RimWorldMCP.Tools
 {
@@ -12,32 +17,178 @@ namespace RimWorldMCP.Tools
 
         public Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            var context = @"## 殖民地概况
-- 名称: 新希望 | 时间: 第3年夏季第5天 | 天气: 晴
-- 殖民者: 6人 (5自由殖民者 + 1囚犯)
-- 动物: 2只哈士奇, 3只羊驼, 5只鸡
+            try
+            {
+                var sb = new StringBuilder();
 
-## 资源库存
-- 钢铁: 2800 | 木头: 1200 | 石块: 3500 | 玻璃钢: 80
-- 食物: 1500份 (约15天) | 医药: 60份 (闪耀世界医药: 5)
-- 零部件: 25 | 高级零部件: 3
-- 电力: 7200W/10000W (剩余2800W) | 储电: 15000Wd
-- 白银: 12000
+                // 殖民地概况
+                var map = Find.CurrentMap;
+                var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                var tickManager = Find.TickManager;
+                int ticksAbs = tickManager?.TicksAbs ?? 0;
+                int ticksGame = tickManager?.TicksGame ?? 0;
+                int day = ticksGame / 60000; // 1 day = 60000 ticks
 
-## 研究
-- 当前: 微型电子学基础 (72.3%)
-- 已完成: 24项
+                sb.AppendLine("## 殖民地概况");
+                if (map != null)
+                {
+                    sb.AppendLine($"- 地图: {map.Tile} | 大小: {map.Size.x}x{map.Size.z} | 时间: 第{day / 15 + 1}年 第{day % 15 + 1}天");
+                }
+                sb.AppendLine($"- 总 Tick: {ticksAbs} | 游戏 Tick: {ticksGame}");
 
-## 威胁与任务
-- 威胁点数: 950 | 下次袭击: 2.1天内
+                // 殖民者
+                int freeColonists = colonists.Count;
+                var prisoners = PawnsFinder.AllMaps_PrisonersOfColony;
+                int prisonerCount = prisoners.Count;
+                sb.AppendLine($"- 自由殖民者: {freeColonists}人 | 囚犯: {prisonerCount}人");
 
-## 当前工作单
-- 裁缝台: 高级衬衫 x3 | 防弹夹克 x1 (暂停)
-- 锻造台: 长剑 x1 | 板甲 x2 (暂停)
-- 炉灶: 简单食物 xForever
-- 研究工作台: 微型电子学基础 (进行中)
-";
-            return Task.FromResult(ToolResult.Success(context));
+                // 动物
+                var animals = PawnsFinder.AllMaps_Spawned.Where(p => p.Faction == Faction.OfPlayer && p.RaceProps.Animal).ToList();
+                if (animals.Count > 0)
+                {
+                    var animalGroups = animals.GroupBy(a => a.def.label).Select(g => $"{g.Key} x{g.Count()}");
+                    sb.AppendLine($"- 动物: {string.Join(", ", animalGroups)}");
+                }
+
+                // 资源库存概要
+                sb.AppendLine();
+                sb.AppendLine("## 资源库存概要");
+                if (map != null)
+                {
+                    var resources = map.resourceCounter?.AllCountedAmounts;
+                    if (resources != null)
+                    {
+                        // 关键资源摘要
+                        var keyDefs = new[] { "Steel", "WoodLog", "Plasteel", "ComponentIndustrial", "ComponentSpacer",
+                            "Silver", "Gold", "Uranium", "Chemfuel" };
+                        foreach (var defName in keyDefs)
+                        {
+                            foreach (var kv in resources)
+                            {
+                                if (kv.Key.defName == defName && kv.Value > 0)
+                                {
+                                    sb.AppendLine($"- {kv.Key.label}: {kv.Value}");
+                                    break;
+                                }
+                            }
+                        }
+                        var foodTotal = resources.Where(kv => kv.Key.IsNutritionGivingIngestible || kv.Key.ingestible?.foodType != null).Sum(kv => kv.Value);
+                        if (foodTotal > 0) sb.AppendLine($"- 食物总计: {foodTotal}份");
+                    }
+                }
+
+                // 电力
+                if (map != null)
+                {
+                    var powerNets = map.powerNetManager?.AllNetsListForReading;
+                    if (powerNets != null)
+                    {
+                        float totalGenerated = 0f, totalUsed = 0f, totalStored = 0f, totalStoredMax = 0f;
+                        foreach (var net in powerNets)
+                        {
+                            // PowerNet has CurrentEnergyGainRate(), CurrentEnergyUsage()
+                            // We approximate by looking at buildings
+                        }
+                    }
+                }
+
+                // 研究进度
+                sb.AppendLine();
+                sb.AppendLine("## 研究进度");
+                var researchManager = Find.ResearchManager;
+                if (researchManager != null)
+                {
+                    var currentProj = researchManager.GetProject();
+                    if (currentProj != null)
+                    {
+                        float progress = researchManager.GetProgress(currentProj);
+                        var pct = (int)(progress * 100f);
+                        sb.AppendLine($"- 当前: {currentProj.label} ({pct}%)");
+                    }
+                    else
+                    {
+                        sb.AppendLine("- 当前: 无");
+                    }
+
+                    try
+                    {
+                        var allProjects = DefDatabase<ResearchProjectDef>.AllDefsListForReading;
+                        int completedCount = allProjects.Count(p => p.IsFinished);
+                        sb.AppendLine($"- 已完成: {completedCount}项 / {allProjects.Count}项");
+                        sb.AppendLine($"- 完成率: {(int)(completedCount * 100f / allProjects.Count)}%");
+                    }
+                    catch (Exception) { /* ResearchProjectDef DB access may fail in certain contexts */ }
+                }
+
+                // 威胁信息
+                sb.AppendLine();
+                sb.AppendLine("## 威胁与财富");
+                if (map != null)
+                {
+                    try
+                    {
+                        float wealth = map.wealthWatcher?.WealthTotal ?? 0f;
+                        sb.AppendLine($"- 殖民地总财富: {wealth:N0}");
+                    }
+                    catch (Exception) { }
+                    try
+                    {
+                        var storyteller = Find.Storyteller;
+                        if (storyteller != null)
+                        {
+                            var adaptationFactor = Find.StoryWatcher?.watcherAdaptation?.TotalThreatPointsFactor ?? 0f;
+                            sb.AppendLine($"- 威胁点数倍率: {adaptationFactor:F2}");
+                            sb.AppendLine($"- 难度: {storyteller.difficultyDef?.label ?? "未知"}");
+                            sb.AppendLine($"- 叙事者: {storyteller.def?.label ?? "未知"}");
+                        }
+                    }
+                    catch (Exception) { }
+                }
+
+                // 当前工作单
+                sb.AppendLine();
+                sb.AppendLine("## 当前工作单");
+                if (map != null)
+                {
+                    try
+                    {
+                        var tables = map.listerBuildings?.AllBuildingsColonistOfClass<Building_WorkTable>() ?? Enumerable.Empty<Building_WorkTable>();
+                        foreach (var table in tables)
+                        {
+                            var bills = table.billStack?.Bills;
+                            if (bills != null && bills.Count > 0)
+                            {
+                                sb.AppendLine($"### {table.def.label} ({table.Label})");
+                                foreach (var bill in bills)
+                                {
+                                    string status = bill.suspended ? "(暂停)" : "(进行中)";
+                                    var bp = bill as Bill_Production;
+                                    string repeatInfo = "";
+                                    if (bp != null)
+                                    {
+                                        if (bp.repeatMode == BillRepeatModeDefOf.RepeatCount)
+                                            repeatInfo = $" x{bp.repeatCount}";
+                                        else if (bp.repeatMode == BillRepeatModeDefOf.TargetCount)
+                                            repeatInfo = $" 保持{bp.targetCount}";
+                                        else if (bp.repeatMode == BillRepeatModeDefOf.Forever)
+                                            repeatInfo = " xForever";
+                                    }
+                                    sb.AppendLine($"- {bill.Label}{repeatInfo} {status}");
+                                }
+                            }
+                        }
+                        if (!tables.Any(t => t.billStack?.Bills?.Count > 0))
+                            sb.AppendLine("- 暂无工作单");
+                    }
+                    catch (Exception) { sb.AppendLine("- 无法读取工作单"); }
+                }
+
+                return Task.FromResult(ToolResult.Success(sb.ToString()));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(ToolResult.Error($"get_game_context 执行失败: {ex.Message}"));
+            }
         }
     }
 }

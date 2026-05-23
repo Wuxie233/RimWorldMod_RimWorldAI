@@ -3,13 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
     public class Tool_EquipPawn : ITool
     {
         public string Name => "equip_pawn";
-        public string Description => "给指定殖民者装备武器或衣物。从库存中找到匹配的物品并强制装备。";
+        public string Description => "给指定殖民者装备武器或衣物。从地图库存中找到匹配的物品并强制装备。";
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -17,41 +19,190 @@ namespace RimWorldMCP.Tools
             {
                 colonist_name = new { type = "string", description = "殖民者名称" },
                 thing_label = new { type = "string", description = "装备标签/名称，模糊匹配" },
-                thing_defName = new { type = "string", description = "装备 defName，精确匹配" },
+                thing_defName = new { type = "string", description = "装备 DefName，精确匹配" },
                 equip_type = new { type = "string", description = "装备类型", @enum = new[] { "weapon", "apparel" } }
             },
             required = new[] { "colonist_name" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数"));
-            if (!args.Value.TryGetProperty("colonist_name", out var cn)) return Task.FromResult(ToolResult.Error("缺少 colonist_name"));
+            // ---- 参数验证 ----
+            if (args == null) return ToolResult.Error("缺少参数");
+            if (!args.Value.TryGetProperty("colonist_name", out var jName))
+                return ToolResult.Error("缺少必填参数: colonist_name");
 
-            var colonist = cn.GetString() ?? "";
-            var label = ""; var defName = ""; var equipType = "weapon";
-            if (args.Value.TryGetProperty("thing_label", out var tl)) label = tl.GetString() ?? "";
-            if (args.Value.TryGetProperty("thing_defName", out var td)) defName = td.GetString() ?? "";
-            if (args.Value.TryGetProperty("equip_type", out var et)) equipType = et.GetString() ?? "weapon";
-            if (string.IsNullOrEmpty(label) && string.IsNullOrEmpty(defName))
-                return Task.FromResult(ToolResult.Error("需要提供 thing_label 或 thing_defName"));
+            string colonistName = jName.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(colonistName))
+                return ToolResult.Error("colonist_name 不能为空");
 
-            var searchKey = !string.IsNullOrEmpty(label) ? label : defName;
-            var stockItems = new Dictionary<string, (string type, string quality)>
+            string thingLabel = "";
+            if (args.Value.TryGetProperty("thing_label", out var jLabel))
+                thingLabel = jLabel.GetString() ?? "";
+
+            string thingDefName = "";
+            if (args.Value.TryGetProperty("thing_defName", out var jDef))
+                thingDefName = jDef.GetString() ?? "";
+
+            string equipType = "weapon";
+            if (args.Value.TryGetProperty("equip_type", out var jType))
             {
-                ["栓动步枪"] = ("weapon", "优秀"), ["突击步枪"] = ("weapon", "良好"),
-                ["长剑"] = ("weapon", "极佳"), ["冲锋手枪"] = ("weapon", "普通"),
-                ["防弹背心"] = ("apparel", "良好"), ["简易头盔"] = ("apparel", "极佳"),
-                ["板甲"] = ("apparel", "优秀"), ["防尘大衣"] = ("apparel", "正常"),
-            };
+                equipType = jType.GetString() ?? "weapon";
+                if (equipType != "weapon" && equipType != "apparel")
+                    return ToolResult.Error($"不支持的装备类型: {equipType}，请使用 weapon 或 apparel");
+            }
 
-            var match = stockItems.Where(kv => kv.Key.IndexOf(searchKey, StringComparison.OrdinalIgnoreCase) >= 0 || searchKey.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-            if (match.Count == 0)
-                return Task.FromResult(ToolResult.Error($"未找到匹配的装备: {searchKey}。库存可用: {string.Join(", ", stockItems.Keys)}"));
+            if (string.IsNullOrEmpty(thingLabel) && string.IsNullOrEmpty(thingDefName))
+                return ToolResult.Error("需要提供 thing_label 或 thing_defName 来指定要装备的物品");
 
-            var best = match.First();
-            var eqType = equipType == "apparel" ? "穿戴" : "装备";
-            return Task.FromResult(ToolResult.Success($"{colonist} 已{eqType}: {best.Key} ({best.Value.quality}品质)。"));
+            // ---- 通过 McpCommandQueue 在主线程执行 RimWorld API 调用 ----
+            try
+            {
+                var cmd = new McpCommand
+                {
+                    Action = () =>
+                    {
+                        try
+                        {
+                            // 查找殖民者
+                            var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                            if (colonists == null || colonists.Count == 0)
+                                return "错误：当前没有自由殖民者。";
+
+                            Pawn pawn = colonists.FirstOrDefault(c =>
+                                c.Name.ToStringShort.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                c.Name.ToStringFull.IndexOf(colonistName, StringComparison.OrdinalIgnoreCase) >= 0);
+                            if (pawn == null)
+                                return $"错误：找不到殖民者: {colonistName}";
+
+                            Map map = Find.CurrentMap;
+                            if (map == null)
+                                return "错误：没有当前地图。";
+
+                            // 根据装备类型搜索地图上的物品
+                            List<Thing> candidates;
+                            string itemTypeLabel;
+                            if (equipType == "weapon")
+                            {
+                                candidates = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
+                                itemTypeLabel = "武器";
+                            }
+                            else
+                            {
+                                candidates = map.listerThings.ThingsInGroup(ThingRequestGroup.Apparel);
+                                itemTypeLabel = "衣物";
+                            }
+
+                            if (candidates == null || candidates.Count == 0)
+                                return $"错误：地图上没有任何可用的{itemTypeLabel}。";
+
+                            // 匹配物品
+                            Thing matched = FindMatchingThing(candidates, thingLabel, thingDefName);
+                            if (matched == null)
+                            {
+                                string searchKey = !string.IsNullOrEmpty(thingLabel) ? thingLabel : thingDefName;
+                                // 列出可用物品帮助用户
+                                var available = candidates
+                                    .Select(t => $"{t.Label} ({t.def.defName})")
+                                    .Take(10).ToArray();
+                                return $"错误：在地图上找不到匹配 '{searchKey}' 的{itemTypeLabel}。" +
+                                       $"可用物品示例: {string.Join(", ", available)}";
+                            }
+
+                            // 获取品质信息
+                            string qualityStr = "";
+                            try
+                            {
+                                var compQuality = matched.TryGetComp<CompQuality>();
+                                if (compQuality != null)
+                                {
+                                    var qc = compQuality.Quality;
+                                    qualityStr = $"（品质: {qc.GetLabel()}）";
+                                }
+                            }
+                            catch { /* 部分物品可能没有品质组件 */ }
+
+                            // 执行装备
+                            if (equipType == "weapon")
+                            {
+                                var weapon = matched as ThingWithComps;
+                                if (weapon == null)
+                                    return $"错误：{matched.Label} 无法作为武器装备。";
+                                if (pawn.equipment == null)
+                                    return $"错误：{pawn.Name.ToStringShort} 没有装备管理器（可能不是人类）。";
+
+                                pawn.equipment.AddEquipment(weapon);
+
+                                // 获取装备后的武器名称
+                                var newWeapon = pawn.equipment.Primary;
+                                string equippedName = newWeapon?.Label ?? matched.Label;
+                                return $"{pawn.Name.ToStringShort} 已装备武器: {equippedName} ({matched.def.defName}){qualityStr}。";
+                            }
+                            else
+                            {
+                                var apparel = matched as Apparel;
+                                if (apparel == null)
+                                    return $"错误：{matched.Label} 无法作为衣物穿戴。";
+                                if (pawn.apparel == null)
+                                    return $"错误：{pawn.Name.ToStringShort} 没有衣物管理器（可能不是人类）。";
+
+                                pawn.apparel.Wear(apparel);
+
+                                return $"{pawn.Name.ToStringShort} 已穿戴衣物: {matched.Label} ({matched.def.defName}){qualityStr}。";
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"装备操作失败: {ex.Message}";
+                        }
+                    }
+                };
+                McpCommandQueue.Enqueue(cmd);
+                string resultText = (string)await cmd.Completion.Task;
+
+                if (resultText.StartsWith("错误：") || resultText.StartsWith("装备操作失败"))
+                    return ToolResult.Error(resultText);
+                return ToolResult.Success(resultText);
+            }
+            catch (TimeoutException)
+            {
+                return ToolResult.Error("装备命令执行超时（5秒内未被主线程处理），请重试。");
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"装备命令执行异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 在地图物品列表中按 label（模糊）或 defName（精确）查找匹配的物品。
+        /// 优先使用 defName 精确匹配，其次使用 label 模糊匹配。
+        /// </summary>
+        private static Thing FindMatchingThing(List<Thing> things, string label, string defName)
+        {
+            if (things == null || things.Count == 0) return null;
+
+            // 优先: defName 精确匹配
+            if (!string.IsNullOrEmpty(defName))
+            {
+                var exact = things.FirstOrDefault(t => t.def.defName == defName);
+                if (exact != null) return exact;
+            }
+
+            // 其次: 物品 Label 模糊匹配
+            if (!string.IsNullOrEmpty(label))
+            {
+                var byItemLabel = things.FirstOrDefault(t =>
+                    t.Label != null && t.Label.IndexOf(label, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (byItemLabel != null) return byItemLabel;
+
+                // 再次: def.label 模糊匹配
+                var byDefLabel = things.FirstOrDefault(t =>
+                    t.def.label != null && t.def.label.IndexOf(label, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (byDefLabel != null) return byDefLabel;
+            }
+
+            return null;
         }
     }
 }

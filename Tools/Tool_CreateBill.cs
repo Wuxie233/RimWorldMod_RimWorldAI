@@ -1,6 +1,10 @@
-using System.Collections.Generic;
+using System;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -20,39 +24,96 @@ namespace RimWorldMCP.Tools
             required = new[] { "recipe_defName" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数: recipe_defName"));
-            if (!args.Value.TryGetProperty("recipe_defName", out var defName)) return Task.FromResult(ToolResult.Error("缺少必填参数: recipe_defName"));
+            if (args == null) return ToolResult.Error("缺少参数: recipe_defName");
+            if (!args.Value.TryGetProperty("recipe_defName", out var defNameProp))
+                return ToolResult.Error("缺少必填参数: recipe_defName");
 
-            var recipe = defName.GetString() ?? "";
+            var recipeDefName = defNameProp.GetString() ?? "";
             var count = 1;
-            var repeatMode = "RepeatCount";
+            var repeatModeStr = "RepeatCount";
             if (args.Value.TryGetProperty("count", out var c) && c.TryGetInt32(out var cv)) count = cv;
-            if (args.Value.TryGetProperty("repeat_mode", out var rm)) repeatMode = rm.GetString() ?? "RepeatCount";
+            if (args.Value.TryGetProperty("repeat_mode", out var rm))
+                repeatModeStr = rm.GetString() ?? "RepeatCount";
 
-            var workbenchMap = new Dictionary<string, (string workbench, string label)>
-            {
-                ["Make_LongSword"] = ("锻造台", "长剑"),
-                ["Make_PlateArmor"] = ("锻造台", "板甲"),
-                ["Make_Gladius"] = ("锻造台", "短剑"),
-                ["Make_Duster"] = ("裁缝台", "防尘大衣"),
-                ["Make_Pants"] = ("裁缝台", "裤子"),
-                ["Make_ButtonDownShirt"] = ("裁缝台", "高级衬衫"),
-                ["Make_SimpleMeal"] = ("炉灶", "简单食物"),
-                ["Make_FineMeal"] = ("炉灶", "精致食物"),
-                ["Make_Component"] = ("机械加工台", "零部件"),
-                ["Make_AssaultRifle"] = ("机械加工台", "突击步枪"),
-            };
+            if (count < 1)
+                return ToolResult.Error("制造数量必须大于 0。");
 
-            if (!workbenchMap.TryGetValue(recipe, out var info))
+            try
             {
-                var known = string.Join(", ", workbenchMap.Keys);
-                return Task.FromResult(ToolResult.Error($"未知配方: {recipe}。已知配方: {known}"));
+                // 查找配方
+                var recipe = DefDatabase<RecipeDef>.GetNamed(recipeDefName, errorOnFail: false);
+                if (recipe == null)
+                    return ToolResult.Error($"未知配方: {recipeDefName}。请先用 list_recipes 查询可用配方。");
+
+                var map = Find.CurrentMap;
+                if (map == null)
+                    return ToolResult.Error("当前没有可用地图。");
+
+                // 查找工作台
+                var workTables = map.listerBuildings.AllBuildingsColonistOfClass<Building_WorkTable>().ToList();
+                if (workTables.Count == 0)
+                    return ToolResult.Error("当前殖民地没有任何工作台。");
+
+                // 使用第一个可用的工作台
+                var targetTable = workTables[0];
+                var tableLabel = targetTable.def?.label ?? targetTable.def?.defName ?? "工作台";
+
+                // 通过 McpCommandQueue 在主线程上执行操作
+                var result = await Task.Run(() =>
+                {
+                    var tcs = new TaskCompletionSource<object?>();
+                    McpCommandQueue.Enqueue(new McpCommand
+                    {
+                        Action = () =>
+                        {
+                            var bill = new Bill_Production(recipe);
+                            bill.targetCount = count;
+
+                            switch (repeatModeStr)
+                            {
+                                case "Forever":
+                                    bill.repeatMode = BillRepeatModeDefOf.Forever;
+                                    break;
+                                case "TargetCount":
+                                    bill.repeatMode = BillRepeatModeDefOf.TargetCount;
+                                    bill.targetCount = count;
+                                    break;
+                                case "RepeatCount":
+                                default:
+                                    bill.repeatMode = BillRepeatModeDefOf.RepeatCount;
+                                    bill.repeatCount = count;
+                                    break;
+                            }
+
+                            targetTable.billStack.AddBill(bill);
+                            return bill.Label;
+                        },
+                        Completion = tcs
+                    });
+                    return tcs.Task;
+                });
+
+                var billLabel = result as string ?? recipeDefName;
+                var repeatText = repeatModeStr switch
+                {
+                    "Forever" => "永久重复",
+                    "TargetCount" => $"目标数量 {count} 件",
+                    _ => $"重复 {count} 次"
+                };
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"已在 {tableLabel} 创建制造单据:");
+                sb.AppendLine($"- 配方: {billLabel} ({recipeDefName})");
+                sb.AppendLine($"- 模式: {repeatText}");
+
+                return ToolResult.Success(sb.ToString());
             }
-
-            var repeatText = repeatMode switch { "Forever" => "永久重复", "TargetCount" => $"目标数量 {count}", _ => $"重复 {count} 次" };
-            return Task.FromResult(ToolResult.Success($"已在{info.workbench}创建制造单据: {info.label} ({recipe}) — {repeatText}"));
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"创建制造单据失败: {ex.Message}");
+            }
         }
     }
 }

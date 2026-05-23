@@ -1,5 +1,8 @@
+using System;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -12,31 +15,109 @@ namespace RimWorldMCP.Tools
             type = "object",
             properties = new
             {
-                thingDef_name = new { type = "string", description = "要建造的物品 defName。常用: Wall(墙), Door(门), TableSmithy(锻造台), WoodFloor(木地板), Bed(床), StandingLamp(立灯)" },
+                thingDef_name = new { type = "string", description = "要建造的物品 DefName。常用: Wall(墙), Door(门), TableSmithy(锻造台), WoodFloor(木地板), Bed(床), StandingLamp(立灯)" },
                 pos_x = new { type = "integer", description = "X 坐标" },
                 pos_y = new { type = "integer", description = "Y 坐标" },
                 pos_z = new { type = "integer", description = "Z 坐标" },
                 rotation = new { type = "string", description = "旋转方向", @enum = new[] { "North", "East", "South", "West" } },
-                stuff_defName = new { type = "string", description = "建筑材料 defName，如 Steel, WoodLog" }
+                stuff_defName = new { type = "string", description = "建筑材料 DefName，如 Steel, WoodLog" }
             },
             required = new[] { "thingDef_name", "pos_x", "pos_y", "pos_z" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数"));
-            if (!args.Value.TryGetProperty("thingDef_name", out var defName)) return Task.FromResult(ToolResult.Error("缺少 thingDef_name"));
-            if (!args.Value.TryGetProperty("pos_x", out var px) || !px.TryGetInt32(out var posX)) return Task.FromResult(ToolResult.Error("缺少 pos_x"));
-            if (!args.Value.TryGetProperty("pos_y", out var py) || !py.TryGetInt32(out var posY)) return Task.FromResult(ToolResult.Error("缺少 pos_y"));
-            if (!args.Value.TryGetProperty("pos_z", out var pz) || !pz.TryGetInt32(out var posZ)) return Task.FromResult(ToolResult.Error("缺少 pos_z"));
+            // ---- 参数验证 ----
+            if (args == null) return ToolResult.Error("缺少参数");
+            if (!args.Value.TryGetProperty("thingDef_name", out var jDefName))
+                return ToolResult.Error("缺少必填参数: thingDef_name");
+            if (!args.Value.TryGetProperty("pos_x", out var jX) || !jX.TryGetInt32(out var posX))
+                return ToolResult.Error("缺少必填参数: pos_x");
+            if (!args.Value.TryGetProperty("pos_y", out var jY) || !jY.TryGetInt32(out var posY))
+                return ToolResult.Error("缺少必填参数: pos_y");
+            if (!args.Value.TryGetProperty("pos_z", out var jZ) || !jZ.TryGetInt32(out var posZ))
+                return ToolResult.Error("缺少必填参数: pos_z");
 
-            var rotation = "North";
-            if (args.Value.TryGetProperty("rotation", out var rot)) rotation = rot.GetString() ?? "North";
-            var stuff = "";
-            if (args.Value.TryGetProperty("stuff_defName", out var s)) stuff = s.GetString() ?? "";
-            var stuffText = string.IsNullOrEmpty(stuff) ? "" : $" (材料: {stuff})";
+            string thingDefName = jDefName.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(thingDefName))
+                return ToolResult.Error("thingDef_name 不能为空");
 
-            return Task.FromResult(ToolResult.Success($"已在坐标 ({posX}, {posY}, {posZ}) 放置建造蓝图: {defName.GetString()}{stuffText}, 朝向: {rotation}。"));
+            string rotationStr = "North";
+            if (args.Value.TryGetProperty("rotation", out var jRot))
+            {
+                rotationStr = jRot.GetString() ?? "North";
+            }
+
+            string stuffDefName = "";
+            if (args.Value.TryGetProperty("stuff_defName", out var jStuff))
+            {
+                stuffDefName = jStuff.GetString() ?? "";
+            }
+
+            // ---- 通过 McpCommandQueue 在主线程执行 RimWorld API 调用 ----
+            try
+            {
+                var cmd = new McpCommand
+                {
+                    Action = () =>
+                    {
+                        try
+                        {
+                            Map map = Find.CurrentMap;
+                            if (map == null)
+                                return "错误：没有当前地图，请先加载游戏存档。";
+
+                            ThingDef def = ThingDef.Named(thingDefName);
+                            if (def == null)
+                                return $"错误：找不到 ThingDef: {thingDefName}。请确认 DefName 拼写正确。";
+                            if (!(def is BuildableDef))
+                                return $"错误：{thingDefName} 不是可建造的类型。";
+
+                            Rot4 rot = rotationStr switch
+                            {
+                                "North" => Rot4.North,
+                                "East" => Rot4.East,
+                                "South" => Rot4.South,
+                                "West" => Rot4.West,
+                                _ => Rot4.North
+                            };
+
+                            ThingDef stuff = null;
+                            if (!string.IsNullOrEmpty(stuffDefName))
+                            {
+                                stuff = ThingDef.Named(stuffDefName);
+                                if (stuff == null)
+                                    return $"错误：找不到材料 ThingDef: {stuffDefName}";
+                            }
+
+                            IntVec3 pos = new IntVec3(posX, posY, posZ);
+                            GenConstruct.PlaceBlueprintForBuild(
+                                (BuildableDef)def, pos, map, rot, Faction.OfPlayer, stuff);
+
+                            string stuffInfo = stuff != null ? $"（材料: {stuff.label}）" : "";
+                            return $"已成功在坐标 ({posX}, {posY}, {posZ}) 放置 {def.label} ({thingDefName}) 的建造蓝图{stuffInfo}，朝向: {rotationStr}。";
+                        }
+                        catch (Exception ex)
+                        {
+                            return $"建造蓝图放置失败: {ex.Message}";
+                        }
+                    }
+                };
+                McpCommandQueue.Enqueue(cmd);
+                string resultText = (string)await cmd.Completion.Task;
+
+                if (resultText.StartsWith("错误：") || resultText.StartsWith("建造蓝图放置失败"))
+                    return ToolResult.Error(resultText);
+                return ToolResult.Success(resultText);
+            }
+            catch (TimeoutException)
+            {
+                return ToolResult.Error("建造命令执行超时（5秒内未被主线程处理），请重试。");
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"建造命令执行异常: {ex.Message}");
+            }
         }
     }
 }

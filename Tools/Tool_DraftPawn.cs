@@ -1,5 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -18,19 +24,101 @@ namespace RimWorldMCP.Tools
             required = new[] { "drafted" }
         });
 
-        public Task<ToolResult> ExecuteAsync(JsonElement? args)
+        public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            if (args == null) return Task.FromResult(ToolResult.Error("缺少参数"));
-            if (!args.Value.TryGetProperty("drafted", out var d) || d.ValueKind != JsonValueKind.True && d.ValueKind != JsonValueKind.False)
-                return Task.FromResult(ToolResult.Error("缺少 drafted（需要 true 或 false）"));
+            if (args == null) return ToolResult.Error("缺少参数");
+            if (!args.Value.TryGetProperty("drafted", out var d)
+                || d.ValueKind != JsonValueKind.True && d.ValueKind != JsonValueKind.False)
+                return ToolResult.Error("缺少 drafted（需要 true 或 false）");
 
             var drafted = d.GetBoolean();
-            var colonist = "全体殖民者";
-            if (args.Value.TryGetProperty("colonist_name", out var cn)) colonist = cn.GetString() ?? "全体殖民者";
+            var nameFilter = "";
+            if (args.Value.TryGetProperty("colonist_name", out var cn))
+                nameFilter = cn.GetString() ?? "";
 
-            var action = drafted ? "已征召" : "已解除征召";
-            var note = drafted ? "殖民者将中断当前工作并进入战斗状态。" : "殖民者将恢复日常工作。";
-            return Task.FromResult(ToolResult.Success(colonist == "全体殖民者" ? $"全体 {action}。{note}" : $"{colonist} {action}。{note}"));
+            try
+            {
+                var map = Find.CurrentMap;
+                if (map == null)
+                    return ToolResult.Error("当前没有可用地图。");
+
+                var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                if (colonists == null || colonists.Count == 0)
+                    return ToolResult.Error("当前没有殖民者。");
+
+                // 查找目标殖民者
+                List<Pawn> targets;
+                if (string.IsNullOrEmpty(nameFilter))
+                {
+                    targets = colonists.ToList();
+                }
+                else
+                {
+                    targets = colonists.Where(c =>
+                        c.Name.ToStringShort.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                        || c.Name.ToStringFull.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                    ).ToList();
+
+                    if (targets.Count == 0)
+                        return ToolResult.Error($"未找到匹配的殖民者: {nameFilter}。使用 get_colonists 查看可用殖民者。");
+                }
+
+                // 检查 drafter 可用性
+                var invalidPawns = targets.Where(p => p.drafter == null).ToList();
+                if (invalidPawns.Count > 0)
+                {
+                    var names = invalidPawns.Select(p => p.Name.ToStringShort);
+                    return ToolResult.Error($"以下殖民者无法征召（非玩家控制）: {string.Join(", ", names)}");
+                }
+
+                // 通过 McpCommandQueue 在主线程上批量执行操作
+                var targetNames = targets.Select(p => p.Name.ToStringShort).ToList();
+
+                var result = await Task.Run(() =>
+                {
+                    var tcs = new TaskCompletionSource<object?>();
+                    McpCommandQueue.Enqueue(new McpCommand
+                    {
+                        Action = () =>
+                        {
+                            foreach (var pawn in targets)
+                            {
+                                pawn.drafter.Drafted = drafted;
+                            }
+                            return targetNames;
+                        },
+                        Completion = tcs
+                    });
+                    return tcs.Task;
+                });
+
+                var actionText = drafted ? "已征召" : "已解除征召";
+                var sb = new StringBuilder();
+
+                if (targets.Count == 1)
+                {
+                    sb.Append($"{targets[0].Name.ToStringShort} {actionText}");
+                }
+                else if (string.IsNullOrEmpty(nameFilter))
+                {
+                    sb.Append($"全体殖民者({targets.Count}人) {actionText}");
+                }
+                else
+                {
+                    sb.Append($"{targets.Count} 名殖民者 {actionText}");
+                }
+
+                if (drafted)
+                    sb.AppendLine("。殖民者将中断当前工作并进入战斗状态。");
+                else
+                    sb.AppendLine("。殖民者将恢复日常工作。");
+
+                return ToolResult.Success(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                return ToolResult.Error($"征召操作失败: {ex.Message}");
+            }
         }
     }
 }

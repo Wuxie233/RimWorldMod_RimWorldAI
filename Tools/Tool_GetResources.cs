@@ -1,6 +1,11 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -12,32 +17,164 @@ namespace RimWorldMCP.Tools
 
         public Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
-            var report = @"## 资源库存报告
+            try
+            {
+                var map = Find.CurrentMap;
+                if (map == null) return Task.FromResult(ToolResult.Error("当前没有激活的地图。"));
 
-### 基础材料
-- 钢铁: 2800 | 木头: 1200 | 石块: 3500 (花岗岩) | 玻璃钢: 80
-- 金: 150 | 铀: 40 | 翡翠: 25
+                var resources = map.resourceCounter?.AllCountedAmounts;
+                if (resources == null) return Task.FromResult(ToolResult.Error("无法获取资源计数。"));
 
-### 加工材料
-- 零部件: 25 | 高级零部件: 3
-- 布匹: 320 | 恶魔线: 45
+                var sb = new StringBuilder();
+                sb.AppendLine("## 资源库存报告");
 
-### 食物
-- 简单食物: 45份 | 精致食物: 18份 | 奢侈食物: 5份
-- 生肉: 200份 | 稻米: 350份 | 玉米: 280份
-- 啤酒: 60瓶
+                // 分类资源
+                var categories = new Dictionary<string, List<(string label, int count)>>()
+                {
+                    ["基础金属"] = new(),
+                    ["石材"] = new(),
+                    ["木材与植物材料"] = new(),
+                    ["珍贵材料"] = new(),
+                    ["原材料"] = new(),
+                    ["加工材料"] = new(),
+                    ["食物"] = new(),
+                    ["医药"] = new(),
+                    ["武器"] = new(),
+                    ["衣物与护甲"] = new(),
+                    ["装备与道具"] = new(),
+                    ["其它"] = new(),
+                };
 
-### 医药
-- 草药: 30份 | 普通医药: 60份 | 闪耀世界医药: 5份
+                foreach (var kv in resources)
+                {
+                    var def = kv.Key;
+                    int count = kv.Value;
+                    if (count <= 0) continue;
 
-### 装备库存
-- 栓动步枪: 3 | 突击步枪: 1 | 冲锋手枪: 2
-- 简易头盔: 8 | 防弹背心: 2 | 板甲: 1
+                    string label = def.label;
+                    string cat = CategorizeItem(def);
+                    if (!categories.ContainsKey(cat))
+                        cat = "其它";
 
-### 电力
-- 发电: 10000W | 用电: 7200W | 储电: 15000Wd / 20000Wd
-";
-            return Task.FromResult(ToolResult.Success(report));
+                    categories[cat].Add((label, count));
+                }
+
+                foreach (var cat in categories)
+                {
+                    var items = cat.Value;
+                    if (items.Count == 0) continue;
+
+                    sb.AppendLine();
+                    sb.AppendLine($"### {cat.Key}");
+                    // 按数量降序排列
+                    foreach (var item in items.OrderByDescending(i => i.count))
+                    {
+                        sb.AppendLine($"- {item.label}: {item.count}");
+                    }
+                }
+
+                // 电力信息
+                sb.AppendLine();
+                sb.AppendLine("### 电力");
+                try
+                {
+                    var powerNets = map.powerNetManager?.AllNetsListForReading;
+                    if (powerNets != null && powerNets.Count > 0)
+                    {
+                        float totalGenerated = 0f, totalUsed = 0f, totalStored = 0f;
+                        foreach (var net in powerNets)
+                        {
+                            totalStored += net.CurrentStoredEnergy();
+                            foreach (var comp in net.powerComps)
+                            {
+                                if (comp.PowerOn)
+                                {
+                                    float rate = comp.EnergyOutputPerTick;
+                                    if (rate > 0f)
+                                        totalGenerated += rate;
+                                    else
+                                        totalUsed += -rate;
+                                }
+                            }
+                        }
+                        sb.AppendLine($"- 发电: {totalGenerated:N0}W");
+                        sb.AppendLine($"- 用电: {totalUsed:N0}W");
+                        sb.AppendLine($"- 储电: {totalStored:N0}Wd");
+                        float surplus = totalGenerated - totalUsed;
+                        string surplusLabel = surplus >= 0 ? $"剩余 {surplus:N0}W" : $"缺口 {Math.Abs(surplus):N0}W";
+                        sb.AppendLine($"- 电力平衡: {surplusLabel}");
+                    }
+                }
+                catch (Exception) { sb.AppendLine("- 无法读取电力信息"); }
+
+                // 统计
+                int totalItemTypes = resources.Count(kv => kv.Value > 0);
+                sb.AppendLine();
+                sb.AppendLine($"---");
+                sb.AppendLine($"*共 {totalItemTypes} 种物品有库存*");
+
+                return Task.FromResult(ToolResult.Success(sb.ToString()));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(ToolResult.Error($"get_resources 执行失败: {ex.Message}"));
+            }
+        }
+
+        private static string CategorizeItem(ThingDef def)
+        {
+            var dn = def.defName;
+
+            // 金属
+            if (dn == "Steel" || dn == "Plasteel" || dn == "Silver" || dn == "Gold" ||
+                dn == "Uranium" || dn == "Jade")
+                return "基础金属";
+
+            // 石材块
+            if (def.IsStuff && def.stuffProps?.categories?.Any(c => c.defName == "Stony") == true ||
+                dn.Contains("Blocks") && (dn.Contains("Sandstone") || dn.Contains("Granite") || dn.Contains("Limestone") || dn.Contains("Slate") || dn.Contains("Marble")))
+                return "石材";
+
+            // 木材
+            if (dn == "WoodLog" || (def.IsStuff && def.stuffProps?.categories?.Any(c => c.defName == "Woody") == true))
+                return "木材与植物材料";
+
+            // 珍贵材料
+            if (dn == "ComponentIndustrial" || dn == "ComponentSpacer" || dn == "Chemfuel" || def.IsDrug)
+                return "珍贵材料";
+
+            // 原材料
+            if (def.IsStuff || dn.Contains("Raw") || dn.Contains("Leather") || dn.Contains("Wool") ||
+                dn.Contains("Cloth") || dn.Contains("Synthread") || dn.Contains("Hyperweave") || dn.Contains("Devilstrand"))
+                return "原材料";
+
+            // 加工材料
+            if (dn.Contains("Component") || dn.Contains("Adv") && dn.Contains("Component"))
+                return "加工材料";
+
+            // 食物
+            if (def.IsNutritionGivingIngestible || def.ingestible?.foodType != null ||
+                def.IsIngestible && def.ingestible != null && def.ingestible.foodType != null)
+                return "食物";
+
+            // 医药
+            if (def.IsMedicine || dn.Contains("Medicine") || dn.Contains("Penoxycyline") ||
+                dn.Contains("Luciferium") || dn.Contains("Healer"))
+                return "医药";
+
+            // 武器
+            if (def.IsWeapon || def.IsRangedWeapon || def.IsMeleeWeapon)
+                return "武器";
+
+            // 衣物与护甲
+            if (def.IsApparel)
+                return "衣物与护甲";
+
+            // 装备（建筑建材类等）
+            if (def.thingClass != null && def.thingClass.Name.Contains("Building"))
+                return "装备与道具";
+
+            return "其它";
         }
     }
 }
