@@ -72,7 +72,7 @@ namespace RimWorldMCP
 
                 // 4. 创建 Transport（默认 SSE + Streamable HTTP，端口 9877）
                 // 目前启动 Streamable HTTP（新版 MCP 规范推荐），SSE 可后续并行启动
-                _transport = new StreamableHttpTransport(DefaultPort);
+                _transport = new SseTransport(DefaultPort);
 
                 // 5. 创建 McpServer
                 var server = new McpServer(_transport, toolRegistry);

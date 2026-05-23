@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -13,6 +14,9 @@ namespace RimWorldMCP.Transport
         private readonly int _port;
         private HttpListener? _listener;
         private readonly ConcurrentDictionary<string, SseSession> _sessions = new();
+        // /mcp 端点同步请求响应队列
+        private readonly Queue<PendingMcpResponse> _mcpResponses = new();
+        private readonly object _mcpLock = new();
 
         public string Name => "sse";
         public event Action<string>? OnMessage;
@@ -35,6 +39,25 @@ namespace RimWorldMCP.Transport
 
         public async Task SendAsync(string message)
         {
+            // 优先检查 /mcp 同步响应
+            PendingMcpResponse? mcp = null;
+            lock (_mcpLock)
+            {
+                if (_mcpResponses.Count > 0)
+                    mcp = _mcpResponses.Dequeue();
+            }
+            if (mcp != null)
+            {
+                var bytes = Encoding.UTF8.GetBytes(message);
+                mcp.Response.ContentType = "application/json";
+                mcp.Response.ContentLength64 = bytes.Length;
+                await mcp.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                mcp.Response.Close();
+                mcp.Completion.TrySetResult(true);
+                return;
+            }
+
+            // SSE 广播
             foreach (var kvp in _sessions)
             {
                 var session = kvp.Value;
@@ -104,6 +127,15 @@ namespace RimWorldMCP.Transport
                 {
                     await HandlePostMessage(context);
                 }
+                else if (request.Url?.AbsolutePath == "/mcp" && request.HttpMethod == "POST")
+                {
+                    await HandleMcpPost(context);
+                }
+                else if (request.Url?.AbsolutePath == "/mcp" && request.HttpMethod == "DELETE")
+                {
+                    response.StatusCode = 204;
+                    response.Close();
+                }
                 else if (request.Url?.AbsolutePath == "/health" && request.HttpMethod == "GET")
                 {
                     var bytes = Encoding.UTF8.GetBytes("OK");
@@ -115,7 +147,7 @@ namespace RimWorldMCP.Transport
                 else if (request.HttpMethod == "GET")
                 {
                     // 根路径状态页 — Claude Desktop 激活时首先检查
-                    var json = "{\"status\":\"ok\",\"server\":\"RimWorldMCP\",\"transport\":\"sse\",\"endpoints\":[\"/sse\",\"/message\"]}";
+                    var json = "{\"status\":\"ok\",\"server\":\"RimWorldMCP\",\"transport\":\"sse+http\",\"endpoints\":[\"/sse\",\"/message\",\"/mcp\"]}";
                     var bytes = Encoding.UTF8.GetBytes(json);
                     response.ContentType = "application/json";
                     response.ContentLength64 = bytes.Length;
@@ -182,6 +214,39 @@ namespace RimWorldMCP.Transport
 
             response.StatusCode = 202;
             response.Close();
+        }
+
+        private async Task HandleMcpPost(HttpListenerContext context)
+        {
+            var request = context.Request;
+            var response = context.Response;
+
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            var body = await reader.ReadToEndAsync();
+            Log($"POST /mcp: {body.Substring(0, Math.Min(body.Length, 200))}");
+
+            var pending = new PendingMcpResponse(response);
+            lock (_mcpLock)
+            {
+                _mcpResponses.Enqueue(pending);
+            }
+
+            OnMessage?.Invoke(body);
+
+            // 等待 McpServer 处理并调用 SendAsync 返回响应（超时 30s）
+            await Task.WhenAny(pending.Completion.Task, Task.Delay(30000));
+            if (!pending.Completion.Task.IsCompleted)
+            {
+                response.StatusCode = 504;
+                response.Close();
+            }
+        }
+
+        private class PendingMcpResponse
+        {
+            public HttpListenerResponse Response { get; }
+            public TaskCompletionSource<bool> Completion { get; } = new();
+            public PendingMcpResponse(HttpListenerResponse response) => Response = response;
         }
 
         private static void Log(string msg) => McpLog.Info($"[sse] {msg}");
