@@ -13,8 +13,12 @@ namespace RimWorldMCP
         private const int CheckIntervalTicks = 120;
         private static int _lastColonistCount = -1;
         private static int _lastIdleCount = -1;
-        private static bool _lastRaidActive;
-        private static bool _lastFireActive;
+        private static HashSet<int> _seenLetterIds = new();
+
+        public static void Reset()
+        {
+            _seenLetterIds.Clear();
+        }
 
         public static void Tick()
         {
@@ -29,44 +33,22 @@ namespace RimWorldMCP
             var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
             int colonistCount = colonists.Count;
 
-            // === 1. 袭击检测（上升沿 + 下降沿） ===
-            bool raidActive = map.attackTargetsCache?.TargetsHostileToFaction(Faction.OfPlayer)?.Any() ?? false;
+            // === 1. Letter 通知监控（替代 raid/fire 轮询） ===
+            CheckNewLetters(map, colonists, colonistCount);
 
-            if (raidActive && !_lastRaidActive)
-            {
-                var msg = BuildRaidStartMessage(map, colonistCount, colonists);
-                GatewayMessageQueue.SendNow(MessageCategory.RaidStart, msg);
-            }
-            else if (!raidActive && _lastRaidActive)
-            {
-                var msg = BuildRaidEndMessage(map, colonistCount, colonists);
-                GatewayMessageQueue.Enqueue(MessageCategory.RaidEnd, msg);
-            }
-            _lastRaidActive = raidActive;
-
-            // === 2. 火灾检测（上升沿） ===
-            bool fireActive = map.listerThings.ThingsInGroup(ThingRequestGroup.Fire).Count > 0;
-            if (fireActive && !_lastFireActive)
-            {
-                var msg = BuildFireMessage(colonistCount);
-                GatewayMessageQueue.Enqueue(MessageCategory.RaidEnd, msg); // 火灾重不重要？和 RaidEnd 同级
-            }
-            _lastFireActive = fireActive;
-
-            // === 3. 空闲殖民者检测 ===
+            // === 2. 空闲殖民者检测 ===
             int idleCount = colonists.Count(c =>
                 (c.CurJob?.def?.defName == "Wait_MaintainPosture" || c.CurJob == null)
                 && !c.Downed && !c.Deathresting);
             bool hasNewIdle = idleCount > _lastIdleCount && idleCount > 0;
             _lastIdleCount = idleCount;
 
-            // === 4. 殖民者数量变化 ===
+            // === 3. 殖民者数量变化 ===
             bool countChanged = colonistCount != _lastColonistCount && _lastColonistCount >= 0;
             _lastColonistCount = colonistCount;
 
-            // === 5. 综合警报 ===
+            // === 4. 综合警报 ===
             var alerts = BuildAlertLines(map, colonists, colonistCount);
-            // 合并空闲/数量变化到警报
             if (hasNewIdle)
             {
                 var names = colonists
@@ -91,7 +73,7 @@ namespace RimWorldMCP
                 GatewayMessageQueue.Enqueue(MessageCategory.Alert, sb.ToString().TrimEnd());
             }
 
-            // === 6. 早报（游戏时间每天早上 6 点） ===
+            // === 5. 早报（游戏时间每天早上 6 点） ===
             int hour = GenLocalDate.HourOfDay(map);
             int day = tick / 60000;
             if (hour == 6 && !GatewayMessageQueue.WasDailySentToday(day))
@@ -100,6 +82,76 @@ namespace RimWorldMCP
                 var msg = BuildDailyOverview(map, colonists, colonistCount, tick);
                 GatewayMessageQueue.Enqueue(MessageCategory.DailyMorning, msg);
             }
+        }
+
+        // ========== Letter 通知监控 ==========
+
+        private static void CheckNewLetters(Map map, List<Pawn> colonists, int colonistCount)
+        {
+            var letters = Find.LetterStack.LettersListForReading;
+            var currentIds = new HashSet<int>(letters.Select(l => l.ID));
+
+            // 首轮初始化：标记已有 Letter 为已见，不触发通知
+            if (_seenLetterIds.Count == 0)
+            {
+                _seenLetterIds = currentIds;
+                return;
+            }
+
+            // 检测新 Letter
+            foreach (var letter in letters)
+            {
+                if (!_seenLetterIds.Contains(letter.ID))
+                {
+                    OnNewLetter(letter, map, colonists, colonistCount);
+                }
+            }
+
+            // 清理已关闭的 Letter ID
+            _seenLetterIds.IntersectWith(currentIds);
+        }
+
+        private static void OnNewLetter(Letter letter, Map map, List<Pawn> colonists, int colonistCount)
+        {
+            var sb = new StringBuilder();
+            string dangerLabel = GetDangerLabel(letter.def);
+            sb.AppendLine($"## [{dangerLabel}] {letter.Label.Resolve()}");
+
+            // 提取正文（ChoiceLetter 才有 Text）
+            if (letter is ChoiceLetter choiceLetter)
+            {
+                string text = choiceLetter.Text.Resolve();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    // 只取前 500 字符，太长截断
+                    if (text.Length > 500)
+                        text = text.Substring(0, 497) + "...";
+                    sb.AppendLine(text);
+                }
+            }
+
+            sb.Append(BuildColonySummary(map, colonists, colonistCount));
+
+            // 大威胁立即发送，其余排队
+            bool isBigThreat = letter.def == LetterDefOf.ThreatBig;
+            var category = isBigThreat ? MessageCategory.RaidStart : MessageCategory.Alert;
+            string msg = sb.ToString().TrimEnd();
+
+            if (isBigThreat)
+                GatewayMessageQueue.SendNow(category, msg);
+            else
+                GatewayMessageQueue.Enqueue(category, msg);
+        }
+
+        private static string GetDangerLabel(LetterDef def)
+        {
+            if (def == LetterDefOf.ThreatBig) return "大威胁";
+            if (def == LetterDefOf.ThreatSmall) return "小威胁";
+            if (def == LetterDefOf.NegativeEvent) return "负面";
+            if (def == LetterDefOf.PositiveEvent) return "正面";
+            if (def == LetterDefOf.Death) return "死亡";
+            if (def == LetterDefOf.NeutralEvent) return "事件";
+            return "通知";
         }
 
         // ========== 消息构建 ==========
@@ -177,52 +229,7 @@ namespace RimWorldMCP
             return sb.ToString().TrimEnd();
         }
 
-        private static string BuildRaidStartMessage(Map map, int colonistCount, List<Pawn> colonists)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine($"## ⚠ 袭击开始！{colonistCount} 名殖民者需要立即征召防御！");
-
-            int drafted = colonists.Count(c => c.Drafted);
-            int withWeapon = colonists.Count(c => c.equipment?.Primary != null);
-            int turrets = map.listerBuildings.AllBuildingsColonistOfClass<Building_Turret>().Count();
-            int traps = map.listerBuildings.AllBuildingsColonistOfClass<Building_Trap>().Count();
-
-            sb.Append($"防御: 已征召{drafted}/{colonistCount}");
-            sb.AppendLine($" | 有武器{withWeapon} | 炮塔{turrets} | 陷阱{traps}");
-
-            sb.Append(BuildColonySummary(map, colonists, colonistCount));
-            return sb.ToString().TrimEnd();
-        }
-
-        private static string BuildRaidEndMessage(Map map, int colonistCount, List<Pawn> colonists)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("## 袭击结束");
-
-            int downed = colonists.Count(c => c.Downed);
-            int bleeding = colonists.Count(c => (c.health?.hediffSet?.BleedRateTotal ?? 0f) > 0.3f);
-            if (downed > 0 || bleeding > 0)
-            {
-                sb.Append("伤亡: ");
-                if (downed > 0) sb.Append($"倒地{downed} ");
-                if (bleeding > 0) sb.Append($"流血{bleeding}");
-                sb.AppendLine();
-            }
-            else
-            {
-                sb.AppendLine("无殖民者伤亡");
-            }
-
-            sb.Append(BuildColonySummary(map, colonists, colonistCount));
-            return sb.ToString().TrimEnd();
-        }
-
-        private static string BuildFireMessage(int colonistCount)
-        {
-            return $"⚠ 火灾！{colonistCount}名殖民者需要立即灭火！";
-        }
-
-        /// <summary>殖民地概要（附加在警报/袭击消息末尾）</summary>
+        /// <summary>殖民地概要（附加在消息末尾）</summary>
         private static string BuildColonySummary(Map map, List<Pawn> colonists, int colonistCount)
         {
             var sb = new StringBuilder();

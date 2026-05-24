@@ -61,7 +61,7 @@ namespace RimWorldMCP
                 var path = FindPromptPath();
                 if (string.IsNullOrEmpty(path) || !File.Exists(path))
                 {
-                    McpLog.Info($"[bridge] Prompt 文件不存在: {path}");
+                    McpLog.Error($"[bridge] Prompt 文件不存在: {path}");
                     return "";
                 }
                 return File.ReadAllText(path, System.Text.Encoding.UTF8);
@@ -85,12 +85,12 @@ namespace RimWorldMCP
 
                 // Assemblies/ → ../.. = mod root
                 var modRoot = Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
-                return Path.Combine(modRoot, "Prompt.md");
+                var prompt = Path.Combine(modRoot, "Prompt.md");
+                if (File.Exists(prompt)) return prompt;
             }
-            catch
-            {
-                return "";
-            }
+            catch { }
+
+            return "";
         }
     }
 }

@@ -100,6 +100,9 @@ namespace RimWorldMCP
 
                 McpLog.Info($"MCP 服务已启动: http://{host}:{port}, 传输: http");
 
+                // 新游戏/加载游戏时重置事件监控的已见 Letter 列表
+                GatewayEventMonitor.Reset();
+
                 // 启动桥接器（独立于 MCP Server）
                 _ = BridgeLifecycle.StartAsync();
             }
