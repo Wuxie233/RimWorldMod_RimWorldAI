@@ -96,6 +96,7 @@ namespace RimWorldMCP
                 FilePath = normalizedPath,
                 ContentType = "image/png",
                 DisablePayloadSigning = true,
+                DisableDefaultChecksumValidation = true,
                 Headers = { ContentLength = new FileInfo(normalizedPath).Length }
             });
 
