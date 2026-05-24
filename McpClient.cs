@@ -18,15 +18,15 @@ namespace RimWorldMCP
         private static string _token = "";
         private static int _rpcSeq;
         private static ClientState _state = ClientState.Disconnected;
+        private static TaskCompletionSource<bool>? _helloOk;
 
         public static ClientState State => _state;
         public static bool IsConnected => _state >= ClientState.Handshake;
         public static bool IsReady => _state == ClientState.Ready;
 
-        // 收到的消息队列 — UI 从中消费
         public static readonly ConcurrentQueue<string> Incoming = new();
 
-        /// <summary>连接 Gateway 并完成 connect→auth→ready 握手</summary>
+        /// <summary>连接 Gateway</summary>
         public static async Task Connect(string wsUrl, string token, string password)
         {
             _url = wsUrl;
@@ -37,25 +37,33 @@ namespace RimWorldMCP
             {
                 _ws = new ClientWebSocket();
                 _cts = new CancellationTokenSource();
+                _helloOk = new TaskCompletionSource<bool>();
                 _state = ClientState.Connecting;
 
                 await _ws.ConnectAsync(new Uri(wsUrl), _cts.Token);
+                _state = ClientState.Handshake;
                 McpLog.Info($"[ws] 已连接: {wsUrl}");
 
-                // Step 1: 发送 connect handshake
-                await SendJson(new { type = "connect", role = "client", client = "csharp" });
-                _state = ClientState.Handshake;
-
-                // Step 2: 如果配置了 token，发送 auth
-                if (!string.IsNullOrEmpty(_token))
-                    await SendJson(new { type = "auth", token = _token });
-
-                // Step 3: 启动接收循环（等待事件流）
+                // 启动接收循环
                 _ = ReceiveLoop(_cts.Token);
 
-                // Step 4: 握手完成，直接进入 Ready
-                _state = ClientState.Ready;
-                McpLog.Info("[ws] 握手完成");
+                // 等待 hello-ok (最多 15 秒)
+                var timeout = Task.Delay(15000);
+                var completed = await Task.WhenAny(_helloOk.Task, timeout);
+                if (completed == _helloOk.Task && _helloOk.Task.Result)
+                {
+                    _state = ClientState.Ready;
+                    McpLog.Info("[ws] 握手完成");
+                }
+                else
+                {
+                    McpLog.Warn("[ws] 握手超时，尝试直接进入 Ready");
+                    // 简易模式：直接发 connect 轻量握手
+                    await SendJson(new { type = "connect", role = "client", client = "csharp" });
+                    if (!string.IsNullOrEmpty(_token))
+                        await SendJson(new { type = "auth", token = _token });
+                    _state = ClientState.Ready;
+                }
             }
             catch (Exception ex)
             {
@@ -64,25 +72,19 @@ namespace RimWorldMCP
             }
         }
 
-        /// <summary>发送 RPC 请求</summary>
-        public static async Task<string?> SendRpc(string method, object? payload = null)
-        {
-            if (!IsReady) return null;
-            var id = (++_rpcSeq).ToString();
-            await SendJson(new { type = "req", id, method, @params = payload });
-            // 响应由 ReceiveLoop 处理并放入 Incoming 队列
-            return id;
-        }
-
-        /// <summary>发送文本消息（兼容旧 SendMessage）</summary>
         public static async Task SendMessage(string text)
         {
             if (!IsReady) return;
-            var id = (++_rpcSeq).ToString();
-            await SendJson(new { type = "req", id, method = "agent.send", @params = new { text } });
+            await SendRpc("agent.send", new { text });
         }
 
-        /// <summary>发送心跳</summary>
+        public static async Task SendRpc(string method, object? payload = null)
+        {
+            if (!IsReady) return;
+            var id = (++_rpcSeq).ToString();
+            await SendJson(new { type = "req", id, method, @params = payload });
+        }
+
         public static async Task Ping()
         {
             if (_ws?.State == WebSocketState.Open)
@@ -109,6 +111,38 @@ namespace RimWorldMCP
             await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
         }
 
+        // Gateway 完整握手：收到 challenge → 发 connect RPC → 等 hello-ok
+        private static async Task SendChallengeResponse(string nonce)
+        {
+            var connectParams = new
+            {
+                minProtocol = 3,
+                maxProtocol = 3,
+                client = new
+                {
+                    id = "gateway-client",
+                    displayName = "RimWorldMCP",
+                    version = "1.0",
+                    platform = "windows",
+                    mode = "backend"
+                },
+                caps = new[] { "tool-events" },
+                auth = new
+                {
+                    token = _token,
+                    password = (string?)null,
+                    deviceToken = (string?)null
+                },
+                device = new
+                {
+                    id = "rimworld-mcp",
+                    nonce
+                }
+            };
+
+            await SendJson(new { type = "req", id = Guid.NewGuid().ToString("N").Substring(0, 8), method = "connect", @params = connectParams });
+        }
+
         private static async Task ReceiveLoop(CancellationToken ct)
         {
             var buf = new byte[8192];
@@ -126,29 +160,35 @@ namespace RimWorldMCP
                         text += Encoding.UTF8.GetString(buf, 0, result.Count);
                     }
 
-                    // 解析消息类型
+                    Incoming.Enqueue(text);
+
+                    // 解析握手阶段的关键消息
                     try
                     {
                         using var doc = JsonDocument.Parse(text);
                         var root = doc.RootElement;
-                        if (root.TryGetProperty("type", out var t))
+                        if (!root.TryGetProperty("type", out var t)) continue;
+                        var type = t.GetString();
+
+                        if (type == "evt" || type == "event")
                         {
-                            switch (t.GetString())
+                            if (root.TryGetProperty("event", out var ev) && ev.GetString() == "connect.challenge"
+                                && root.TryGetProperty("payload", out var pl) && pl.TryGetProperty("nonce", out var nonce))
                             {
-                                case "res":
-                                    if (root.TryGetProperty("result", out var r))
-                                        text = $"← {r}";
-                                    break;
-                                case "event":
-                                    if (root.TryGetProperty("event", out var ev) && root.TryGetProperty("payload", out var pl))
-                                        text = $"⚡ {ev.GetString()}: {pl}";
-                                    break;
+                                await SendChallengeResponse(nonce.GetString() ?? "");
+                            }
+                        }
+                        else if (type == "res")
+                        {
+                            if (root.TryGetProperty("ok", out var ok) && ok.GetBoolean()
+                                && root.TryGetProperty("payload", out var payload)
+                                && payload.TryGetProperty("type", out var pt) && pt.GetString() == "hello-ok")
+                            {
+                                _helloOk?.TrySetResult(true);
                             }
                         }
                     }
                     catch { }
-
-                    Incoming.Enqueue(text);
                 }
             }
             catch (OperationCanceledException) { }
