@@ -20,7 +20,8 @@ namespace RimWorldMCP.Tools
                 pos_x = new { type = "integer", description = "X 坐标" },
                 pos_y = new { type = "integer", description = "Y 坐标" },
                 rotation = new { type = "string", description = "旋转方向", @enum = new[] { "North", "East", "South", "West" } },
-                stuff_defName = new { type = "string", description = "建筑材料 DefName，如 Steel, WoodLog" }
+                stuff_defName = new { type = "string", description = "建筑材料 DefName，如 Steel, WoodLog" },
+                force = new { type = "boolean", description = "跳过资源检查强制建造（默认 false）", @default = false }
             },
             required = new[] { "thingDef_name", "pos_x", "pos_y" }
         });
@@ -45,6 +46,10 @@ namespace RimWorldMCP.Tools
             string stuffDefName = "";
             if (args.Value.TryGetProperty("stuff_defName", out var jStuff))
                 stuffDefName = jStuff.GetString() ?? "";
+
+            bool force = false;
+            if (args.Value.TryGetProperty("force", out var jForce))
+                force = jForce.ValueKind == JsonValueKind.True;
 
             return await McpCommandQueue.DispatchAsync(() =>
             {
@@ -94,6 +99,18 @@ namespace RimWorldMCP.Tools
                         typeof(Designator_Place).GetField("placingRot",
                             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                             ?.SetValue(designator, rot);
+                    }
+
+                    // 资源检查
+                    if (!force)
+                    {
+                        var needed = ResourceCheckHelper.CalculateCost(def, stuff);
+                        if (needed.Count > 0)
+                        {
+                            var shortage = ResourceCheckHelper.CheckResources(Find.CurrentMap, needed);
+                            if (shortage != null)
+                                return ToolResult.Error($"建造 {def.label} ({thingDefName}) 资源不足:\n{shortage}");
+                        }
                     }
 
                     // 验证可放置性

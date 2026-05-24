@@ -25,7 +25,8 @@ namespace RimWorldMCP.Tools
                 wall_defName = new { type = "string", description = "墙体 DefName，默认 Wall（可用 Steel 自动使用钢材料）", @default = "Wall" },
                 door_positions = new { type = "string", description = "门的位置，多个用逗号分隔。可选: top, bottom, left, right, center_top, center_bottom, center_left, center_right" },
                 door_defName = new { type = "string", description = "门的 DefName，默认 Door", @default = "Door" },
-                floor_defName = new { type = "string", description = "地板 DefName，可选" }
+                floor_defName = new { type = "string", description = "地板 DefName，可选" },
+                force = new { type = "boolean", description = "跳过资源检查强制建造（默认 false）", @default = false }
             },
             required = new[] { "center_x", "center_y" }
         });
@@ -54,6 +55,10 @@ namespace RimWorldMCP.Tools
 
             string floorDefName = "";
             if (args.Value.TryGetProperty("floor_defName", out var jFloor)) floorDefName = jFloor.GetString() ?? "";
+
+            bool force = false;
+            if (args.Value.TryGetProperty("force", out var jForce))
+                force = jForce.ValueKind == JsonValueKind.True;
 
             // 计算房间几何（不涉及游戏状态，可在任意线程执行）
             int roomW = width + 2;
@@ -164,6 +169,35 @@ namespace RimWorldMCP.Tools
                     var wallStuff = (wallDef.MadeFromStuff) ? ThingDef.Named("Steel") : null;
                     var doorStuff = (doorDef?.MadeFromStuff == true) ? ThingDef.Named("Steel") : null;
                     var floorStuff = (floorDef?.MadeFromStuff == true) ? ThingDef.Named("Steel") : null;
+
+                    // 资源检查（聚合墙体 + 门 + 地板）
+                    if (!force)
+                    {
+                        var aggregate = new Dictionary<ThingDef, int>();
+                        void AddToAggregate(BuildableDef bdef, ThingDef? stuff, int multiplier)
+                        {
+                            var perUnit = ResourceCheckHelper.CalculateCost(bdef, stuff);
+                            if (perUnit.Count == 0) return;
+                            foreach (var kv in perUnit)
+                            {
+                                if (aggregate.ContainsKey(kv.Key))
+                                    aggregate[kv.Key] += kv.Value * multiplier;
+                                else
+                                    aggregate[kv.Key] = kv.Value * multiplier;
+                            }
+                        }
+                        AddToAggregate(wallDef, wallStuff, wallCount);
+                        if (doorDef != null && doorCount > 0)
+                            AddToAggregate(doorDef, doorStuff, doorCount);
+                        if (floorDef != null && floorCount > 0)
+                            AddToAggregate(floorDef, floorStuff, floorCount);
+                        if (aggregate.Count > 0)
+                        {
+                            var shortage = ResourceCheckHelper.CheckResources(map, aggregate);
+                            if (shortage != null)
+                                return ToolResult.Error($"房间建造资源不足:\n{shortage}");
+                        }
+                    }
 
                     // 复用游戏原生 Designator_Build
                     var wallDes = new Designator_Build(wallDef);
