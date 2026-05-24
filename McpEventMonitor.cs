@@ -78,6 +78,7 @@ namespace RimWorldMCP
         {
             var json = $"{{\"event\":\"{eventType}\",\"message\":\"{message}\",\"ts\":\"{System.DateTime.Now:HH:mm:ss}\"}}";
             transport.SendAsync(json);
+            _ = McpClient.SendMessage($"[{eventType}] {message}");
             McpLog.Info($"[event] {eventType}: {message}");
         }
     }
