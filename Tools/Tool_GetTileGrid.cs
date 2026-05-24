@@ -27,6 +27,25 @@ namespace RimWorldMCP.Tools
             required = new[] { "min_x", "min_y", "max_x", "max_y" }
         });
 
+        private static readonly Dictionary<char, string> LegendMap = new()
+        {
+            ['#'] = "墙",
+            ['B'] = "建筑",
+            ['D'] = "门",
+            ['∎'] = "蓝图/框架",
+            ['○'] = "物品",
+            [';'] = "作物",
+            ['♣'] = "树",
+            ['='] = "种植区",
+            ['S'] = "储存区",
+            ['~'] = "水面",
+            ['≈'] = "泥地",
+            ['·'] = "沙地",
+            ['.'] = "土地",
+            [','] = "砾石",
+            ['?'] = "未知"
+        };
+
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
             if (args == null) return ToolResult.Error("缺少参数");
@@ -58,6 +77,7 @@ namespace RimWorldMCP.Tools
 
                     var grid = new char[h][];
                     for (int i = 0; i < h; i++) grid[i] = new char[w];
+                    var usedSymbols = new HashSet<char>();
 
                     for (int gy = minY; gy <= maxY; gy++)
                     {
@@ -66,69 +86,45 @@ namespace RimWorldMCP.Tools
                             var pos = new IntVec3(gx, 0, gy);
                             int row = gy - minY;
                             int col = gx - minX;
+                            char ch;
 
-                            // Buildings
                             var b = pos.GetEdifice(map);
                             if (b != null)
                             {
-                                if (b.def.altitudeLayer == AltitudeLayer.DoorMoveable)
-                                    grid[row][col] = 'D'; // door
-                                else
-                                    grid[row][col] = b.def.altitudeLayer >= AltitudeLayer.Building ? 'B' : '#';
-                                continue;
+                                ch = b.def.altitudeLayer == AltitudeLayer.DoorMoveable ? 'D'
+                                    : b.def.altitudeLayer >= AltitudeLayer.Building ? 'B' : '#';
+                                grid[row][col] = ch; usedSymbols.Add(ch); continue;
                             }
 
-                            // Blueprints / Frames / Items at this cell
                             var things = pos.GetThingList(map);
                             var bp = things.FirstOrDefault(t => t is Blueprint || t is Frame);
                             if (bp != null)
-                            {
-                                grid[row][col] = '∎';
-                                continue;
-                            }
+                            { ch = '∎'; grid[row][col] = ch; usedSymbols.Add(ch); continue; }
 
                             var item = things.FirstOrDefault(t => t.def.category == ThingCategory.Item);
                             if (item != null)
-                            {
-                                grid[row][col] = '○';
-                                continue;
-                            }
+                            { ch = '○'; grid[row][col] = ch; usedSymbols.Add(ch); continue; }
 
-                            // Plants
                             var plant = pos.GetPlant(map);
                             if (plant != null)
-                            {
-                                grid[row][col] = plant.def.plant.IsTree ? '♣' : ';';
-                                continue;
-                            }
+                            { ch = plant.def.plant.IsTree ? '♣' : ';'; grid[row][col] = ch; usedSymbols.Add(ch); continue; }
 
-                            // Zones
                             var zone = map.zoneManager?.ZoneAt(pos);
                             if (zone is Zone_Growing)
-                                grid[row][col] = '=';
-                            else if (zone is Zone_Stockpile)
-                                grid[row][col] = 'S';
-                            else
-                                goto terrain;
+                            { ch = '='; grid[row][col] = ch; usedSymbols.Add(ch); continue; }
+                            if (zone is Zone_Stockpile)
+                            { ch = 'S'; grid[row][col] = ch; usedSymbols.Add(ch); continue; }
 
-                            continue;
-
-                            terrain:
-                            // Terrain
                             var terrain = map.terrainGrid.TerrainAt(pos);
-                            if (terrain != null)
-                            {
-                                grid[row][col] = terrain.defName.Contains("Water") || terrain.defName.Contains("Marsh") ? '~'
-                                    : terrain.defName.Contains("Mud") ? '≈'
-                                    : terrain.defName.Contains("Sand") ? '·'
-                                    : terrain.defName.Contains("Soil") || terrain.defName.Contains("Rich") ? '.'
-                                    : terrain.defName.Contains("Gravel") ? ','
-                                    : '.';
-                            }
-                            else
-                            {
-                                grid[row][col] = '?';
-                            }
+                            ch = terrain != null
+                                ? terrain.defName.Contains("Water") || terrain.defName.Contains("Marsh") ? '~'
+                                : terrain.defName.Contains("Mud") ? '≈'
+                                : terrain.defName.Contains("Sand") ? '·'
+                                : terrain.defName.Contains("Soil") || terrain.defName.Contains("Rich") ? '.'
+                                : terrain.defName.Contains("Gravel") ? ','
+                                : '.'
+                                : '?';
+                            grid[row][col] = ch; usedSymbols.Add(ch);
                         }
                     }
 
@@ -141,8 +137,19 @@ namespace RimWorldMCP.Tools
                             sb.Append(grid[row][col]);
                         sb.AppendLine();
                     }
-                    sb.AppendLine();
-                    sb.AppendLine("图例: #=墙 B=建筑 D=门 ∎=蓝图 ○=物品 ;=作物 ♣=树 ==种植区 S=储存区 ~=水 ≈=泥 ·=沙 .=土 ,=砾石");
+
+                    // 动态图例
+                    var legendParts = new List<string>();
+                    foreach (var ch in usedSymbols.OrderBy(c => c))
+                    {
+                        if (LegendMap.TryGetValue(ch, out var label))
+                            legendParts.Add($"{ch}={label}");
+                    }
+                    if (legendParts.Count > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine(string.Join("  ", legendParts));
+                    }
 
                     return ToolResult.Success(sb.ToString().TrimEnd());
                 }
