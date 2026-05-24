@@ -95,9 +95,7 @@ namespace RimWorldMCP
                 Key = objectKey,
                 FilePath = normalizedPath,
                 ContentType = "image/png",
-                DisablePayloadSigning = true,
-                DisableDefaultChecksumValidation = true,
-                Headers = { ContentLength = new FileInfo(normalizedPath).Length }
+                DisablePayloadSigning = true
             });
 
             McpLog.Info($"OSS 上传成功: {objectKey}");
