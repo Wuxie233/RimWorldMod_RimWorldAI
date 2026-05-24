@@ -13,8 +13,21 @@ namespace RimWorldMCP.Tools
     public class Tool_GetAlerts : ITool
     {
         public string Name => "get_alerts";
-        public string Description => "获取殖民地当前所有警告和提醒：空闲殖民者、缺床缺食、崩溃风险、敌人威胁等。模拟游戏右侧警告栏。";
-        public JsonElement InputSchema => JsonSerializer.SerializeToElement(new { type = "object", properties = new { } });
+        public string Description =>
+            "获取殖民地当前需关注的提醒。应在完成操作后或等待期间定期调用此工具检查是否有新问题。" +
+            "返回内容包括空闲殖民者、资源短缺、崩溃风险、受伤、威胁等。如无问题则返回简短确认。";
+
+        public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
+        {
+            type = "object",
+            properties = new { }
+        });
+
+        // 上次快照——用于对比变化
+        private static int _lastIdleCount = -1;
+        private static int _lastBreakRiskCount = -1;
+        private static int _lastBleederCount = -1;
+        private static int _lastFoodDays = -1;
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
@@ -26,42 +39,26 @@ namespace RimWorldMCP.Tools
                     if (map == null) return ToolResult.Error("当前没有可用地图。");
 
                     var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
-                    int colonistCount = colonists?.Count ?? 0;
+                    int cCount = colonists?.Count ?? 0;
                     var sb = new StringBuilder();
-                    sb.AppendLine("## 殖民地提醒");
-                    sb.AppendLine();
-                    int alertCount = 0;
 
-                    // 1. 空闲殖民者
-                    var idleColonists = colonists?
-                        .Where(c => c.CurJob?.def?.defName == "Wait_MaintainPosture" || c.CurJob == null)
-                        .Where(c => !c.Downed && !c.Deathresting)
-                        .ToList();
-                    if (idleColonists != null && idleColonists.Count > 0)
-                    {
-                        sb.AppendLine($"### ⚠ 空闲殖民者 ({idleColonists.Count} 人)");
-                        foreach (var c in idleColonists)
-                        {
-                            var location = $"({c.Position.x}, {c.Position.z})";
-                            sb.AppendLine($"- {c.Name.ToStringShort} — {location}");
-                        }
-                        sb.AppendLine();
-                        alertCount++;
-                    }
+                    // 空闲殖民者
+                    var idle = colonists?.Where(c =>
+                        (c.CurJob?.def?.defName == "Wait_MaintainPosture" || c.CurJob == null)
+                        && !c.Downed && !c.Deathresting).ToList();
+                    int idleCount = idle?.Count ?? 0;
 
-                    // 2. 缺床铺
-                    var beds = map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>()
-                        .Count(b => !b.ForPrisoners && !b.Medical);
-                    if (colonistCount > beds)
-                    {
-                        sb.AppendLine($"### ⚠ 缺少床铺");
-                        sb.AppendLine($"- 殖民者: {colonistCount} 人, 可用床: {beds} 张 (缺 {colonistCount - beds} 张)");
-                        sb.AppendLine();
-                        alertCount++;
-                    }
+                    // 崩溃风险
+                    var breakRisk = colonists?.Where(c => (c.needs?.mood?.CurLevelPercentage ?? 1f) < 0.2f).ToList();
+                    int breakCount = breakRisk?.Count ?? 0;
 
-                    // 3. 食物不足
-                    if (colonistCount > 0)
+                    // 流血
+                    var bleed = colonists?.Where(c => c.health?.hediffSet?.BleedRateTotal > 0.3f).ToList();
+                    int bleedCount = bleed?.Count ?? 0;
+
+                    // 食物天数
+                    int foodDays = 99;
+                    if (cCount > 0)
                     {
                         float totalFood = 0f;
                         foreach (var kvp in map.resourceCounter?.AllCountedAmounts ?? new())
@@ -69,107 +66,107 @@ namespace RimWorldMCP.Tools
                             var def = kvp.Key;
                             if (def.IsNutritionGivingIngestible && def.ingestible?.HumanEdible == true
                                 && (def.ingestible?.foodType & FoodTypeFlags.Tree) == 0)
-                            {
                                 totalFood += kvp.Value * def.ingestible.CachedNutrition;
-                            }
                         }
-                        int daysWorth = (int)(totalFood / (colonistCount * 1.6f));
-                        if (daysWorth < 3)
-                        {
-                            sb.AppendLine($"### ⚠ 食物不足");
-                            sb.AppendLine($"- 仅够 {daysWorth} 天 (需要至少 3 天储备)");
-                            sb.AppendLine();
-                            alertCount++;
-                        }
+                        foodDays = (int)(totalFood / (cCount * 1.6f));
                     }
 
-                    // 4. 缺乏防御
+                    // 决定是否详细汇报——有变化或首次调用时详细
+                    bool hasNewIssue =
+                        idleCount != _lastIdleCount ||
+                        breakCount != _lastBreakRiskCount ||
+                        bleedCount != _lastBleederCount ||
+                        foodDays != _lastFoodDays;
+
+                    _lastIdleCount = idleCount;
+                    _lastBreakRiskCount = breakCount;
+                    _lastBleederCount = bleedCount;
+                    _lastFoodDays = foodDays;
+
+                    bool anythingWrong = idleCount > 0 || breakCount > 0 || bleedCount > 0
+                        || foodDays < 3;
+
+                    if (!anythingWrong)
+                    {
+                        // 一切正常，简短回复
+                        _lastIdleCount = -1; _lastBreakRiskCount = -1;
+                        _lastBleederCount = -1; _lastFoodDays = -1;
+                        sb.AppendLine($"一切正常 —— {cCount} 名殖民者，食物够 {foodDays} 天。");
+                        sb.AppendLine("建议等待几秒后再次调用本工具检查。");
+                        return ToolResult.Success(sb.ToString().TrimEnd());
+                    }
+
+                    if (!hasNewIssue)
+                    {
+                        // 问题没变，简短重复
+                        sb.AppendLine($"状态不变: 空闲 {idleCount}, 崩溃风险 {breakCount}, 流血 {bleedCount}, 食物 {foodDays}天");
+                        return ToolResult.Success(sb.ToString().TrimEnd());
+                    }
+
+                    // === 以下仅在首次出现或状态变化时详细报告 ===
+
+                    sb.AppendLine("## ⚠ 殖民地提醒");
+                    sb.AppendLine();
+
+                    if (idleCount > 0 && idle != null)
+                    {
+                        sb.AppendLine($"### 空闲殖民者 ({idleCount})");
+                        foreach (var c in idle.Take(5))
+                            sb.AppendLine($"- {c.Name.ToStringShort} ({c.Position.x},{c.Position.z})");
+                        if (idleCount > 5) sb.AppendLine($"- ... 另有 {idleCount - 5} 人");
+                        sb.AppendLine();
+                    }
+
+                    if (breakCount > 0 && breakRisk != null)
+                    {
+                        sb.AppendLine($"### 崩溃风险 ({breakCount})");
+                        foreach (var c in breakRisk)
+                        {
+                            var thoughtList = new List<Thought>();
+                            c.needs!.mood!.thoughts.GetAllMoodThoughts(thoughtList);
+                            var worst = thoughtList.OrderBy(t => t.MoodOffset()).FirstOrDefault();
+                            sb.Append($"- {c.Name.ToStringShort}: 心情 {c.needs.mood.CurLevelPercentage * 100f:F0}%");
+                            if (worst != null) sb.Append($" — {worst.LabelCap} ({worst.MoodOffset():+0;-0})");
+                            sb.AppendLine();
+                        }
+                        sb.AppendLine();
+                    }
+
+                    if (bleedCount > 0 && bleed != null)
+                    {
+                        sb.AppendLine($"### 严重流血 ({bleedCount})");
+                        foreach (var c in bleed)
+                            sb.AppendLine($"- {c.Name.ToStringShort}: 失血 {c.health!.hediffSet.BleedRateTotal * 100f:F0}%/天");
+                        sb.AppendLine();
+                    }
+
+                    if (foodDays < 3)
+                    {
+                        sb.AppendLine($"### ⚠ 食物不足: 仅 {foodDays} 天储备");
+                        sb.AppendLine();
+                    }
+
+                    // 防御检查
                     int turrets = map.listerBuildings.AllBuildingsColonistOfClass<Building_Turret>().Count();
                     int traps = map.listerBuildings.AllBuildingsColonistOfClass<Building_Trap>().Count();
                     float wealth = map.wealthWatcher?.WealthTotal ?? 0f;
                     if (turrets == 0 && traps == 0 && wealth > 15000)
                     {
-                        sb.AppendLine($"### ⚠ 缺乏防御工事");
-                        sb.AppendLine($"- 无炮塔/陷阱，财富已达 {wealth:N0}");
+                        sb.AppendLine("### ⚠ 无防御工事");
+                        sb.AppendLine($"- 财富 {wealth:N0}，无炮塔/陷阱");
                         sb.AppendLine();
-                        alertCount++;
                     }
 
-                    // 5. 崩溃风险
-                    var breakRisks = colonists?.Where(c =>
+                    // 床铺
+                    int beds = map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>()
+                        .Count(b => !b.ForPrisoners && !b.Medical);
+                    if (cCount > beds)
                     {
-                        var mood = c.needs?.mood?.CurLevelPercentage;
-                        return mood != null && mood < 0.2f;
-                    }).ToList();
-                    if (breakRisks != null && breakRisks.Count > 0)
-                    {
-                        sb.AppendLine($"### ⚠ 精神崩溃风险 ({breakRisks.Count} 人)");
-                        foreach (var c in breakRisks)
-                        {
-                            var thoughtList = new System.Collections.Generic.List<Thought>();
-                            c.needs.mood.thoughts.GetAllMoodThoughts(thoughtList);
-                            var thoughts = thoughtList.OrderBy(t => t.MoodOffset()).Take(2)
-                                .Select(t => $"{t.LabelCap} ({t.MoodOffset():+0;-0})");
-                            sb.AppendLine($"- {c.Name.ToStringShort} — 心情 {c.needs.mood.CurLevelPercentage * 100f:F0}% ({string.Join(", ", thoughts)})");
-                        }
+                        sb.AppendLine($"### ⚠ 缺床: {cCount}人仅{beds}张床");
                         sb.AppendLine();
-                        alertCount++;
                     }
 
-                    // 6. 严重流血
-                    var bleeders = colonists?.Where(c => c.health?.hediffSet?.BleedRateTotal > 0.3f).ToList();
-                    if (bleeders != null && bleeders.Count > 0)
-                    {
-                        sb.AppendLine($"### ⚠ 严重流血 ({bleeders.Count} 人)");
-                        foreach (var c in bleeders)
-                        {
-                            float bleed = c.health.hediffSet.BleedRateTotal;
-                            float hoursLeft = c.health.hediffSet.BleedRateTotal > 0
-                                ? c.health.hediffSet.PainTotal / bleed : 24f;
-                            sb.AppendLine($"- {c.Name.ToStringShort} — 流血率 {bleed * 100f:F0}%/天 (约 {hoursLeft:F0} 小时可致死)");
-                        }
-                        sb.AppendLine();
-                        alertCount++;
-                    }
-
-                    // 7. 破烂衣物警告
-                    var tatteredApparel = colonists?
-                        .SelectMany(c => c.apparel?.WornApparel ?? Enumerable.Empty<Apparel>())
-                        .Where(a => a.HitPoints * 100f / a.MaxHitPoints < 30f)
-                        .ToList();
-                    if (tatteredApparel != null && tatteredApparel.Count > 0)
-                    {
-                        sb.AppendLine($"### ⚠ 破损衣物 ({tatteredApparel.Count} 件)");
-                        foreach (var a in tatteredApparel.Take(10))
-                        {
-                            var wearer = a.Wearer?.Name?.ToStringShort ?? "未知";
-                            sb.AppendLine($"- {a.Label} (耐久 {a.HitPoints * 100f / a.MaxHitPoints:F0}%) — 穿着者: {wearer}");
-                        }
-                        if (tatteredApparel.Count > 10)
-                            sb.AppendLine($"- ... 另有 {tatteredApparel.Count - 10} 件");
-                        sb.AppendLine();
-                        alertCount++;
-                    }
-
-                    // 8. 未通电建筑
-                    var unpowered = map.listerBuildings.AllBuildingsColonistOfClass<Building>().Count();
-                    // Too slow to check all, skip
-
-                    // 9. 武器缺失
-                    int unarmed = colonists?.Count(c =>
-                        c.equipment?.Primary == null && !c.WorkTagIsDisabled(WorkTags.Violent)) ?? 0;
-                    if (unarmed > colonistCount * 0.4f && unarmed > 0)
-                    {
-                        sb.AppendLine($"### ⚠ 武器不足");
-                        sb.AppendLine($"- {unarmed} 名战斗能力者无武器 (占 {unarmed * 100 / Math.Max(1, colonistCount)}%)");
-                        sb.AppendLine();
-                        alertCount++;
-                    }
-
-                    if (alertCount == 0)
-                        sb.AppendLine("祝贺！殖民地一切正常，无活跃警报。");
-                    else
-                        sb.AppendLine($"---\n共 {alertCount} 类警报");
+                    sb.AppendLine($"---\n上次检查无异常，现在出现 {idleCount + breakCount + bleedCount + (foodDays < 3 ? 1 : 0) + (turrets == 0 && traps == 0 && wealth > 15000 ? 1 : 0) + (cCount > beds ? 1 : 0)} 项提醒。");
 
                     return ToolResult.Success(sb.ToString().TrimEnd());
                 }
