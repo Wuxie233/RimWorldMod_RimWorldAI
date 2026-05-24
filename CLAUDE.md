@@ -67,7 +67,7 @@ RimWorld 返回主菜单时 `Game.Dispose()` 不通知 GameComponent，导致上
 
 ## OpenClaw Gateway 桥接
 
-McpClient 作为 WebSocket 客户端连接 OpenClaw Gateway（默认 `ws://127.0.0.1:18789`）。
+GatewayClient 作为 WebSocket 客户端连接 OpenClaw Gateway（默认 `ws://127.0.0.1:18789`）。
 
 ### 连接流程
 
@@ -75,7 +75,7 @@ McpClient 作为 WebSocket 客户端连接 OpenClaw Gateway（默认 `ws://127.0
 1. WebSocket 连接  ws://127.0.0.1:18789
 2. 启动 ReceiveLoop 后台接收
 3. 等待 Gateway 发送 connect.challenge 事件
-4. 收到 challenge 后发送 connect RPC 请求
+4. 收到 challenge 后发送 connect RPC 请求（含 ED25519 设备签名）
 5. 等待 hello-ok 响应
 6. 握手完成，进入 Ready
 ```
@@ -100,41 +100,26 @@ McpClient 作为 WebSocket 客户端连接 OpenClaw Gateway（默认 `ws://127.0
     "caps": ["tool-events"],
     "locale": "zh-CN",
     "userAgent": "RimWorldMCP/1.0",
-    "auth": { "token": "...", "password": null, "deviceToken": null },
-    "device": { "id": "rimworld-mcp", "nonce": "xxx" }
+    "auth": { "token": "..." },
+    "device": { "id": "abc123...", "publicKey": "base64url...", "signature": "base64url...", "signedAt": 1737264000000, "nonce": "xxx" }
   }
 }
 ```
 
-- `client.id: "gateway-client"` + `client.mode: "backend"` + loopback 连接 → 官方允许**省略 device 签名**
+- ED25519 设备签名（BouncyCastle），V3 pipe 分隔载荷
+- 签名载荷: `v3|<deviceId>|gateway-client|backend|operator|<scopes>|<ts>|<token>|<nonce>|<platform>|`
 - protocol v3~v4 协商
 
 **Step 3: 收到 hello-ok**
 ```json
-{"type":"res","ok":true,"payload":{"type":"hello-ok","server":{"version":"...","connId":"..."},"policy":{"tickIntervalMs":30000,"maxPayload":26214400,"maxBufferedBytes":52428800}}}
+{"type":"res","ok":true,"payload":{"type":"hello-ok","protocol":4,"server":{"version":"...","connId":"..."},"policy":{"tickIntervalMs":30000}}}
 ```
 
-- `policy.tickIntervalMs` 用于心跳检测，超时 `2×tickIntervalMs` 断开
+- `policy.tickIntervalMs` 心跳间隔，超时 `2×tickIntervalMs` 断开
 
-### RPC 请求
-```json
-{"type":"req","id":"1","method":"agent.send","params":{"text":"hello"}}
-```
+### 已验证
 
-### 事件流
-```json
-{"type":"event","event":"message","payload":{"text":"..."}}
-```
-
-### RPC 响应
-```json
-{"type":"res","id":"1","ok":true,"payload":{...}}
-```
-
-### 心跳
-```json
-{"type":"ping"}
-```
+Gateway 2026.5.22 + ED25519 V3 签名握手已通过。
 
 ### 设置
 
