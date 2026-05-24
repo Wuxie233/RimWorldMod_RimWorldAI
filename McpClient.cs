@@ -165,7 +165,7 @@ namespace RimWorldMCP
 
                     Incoming.Enqueue(text);
 
-                    // 解析握手阶段的关键消息
+                    // 按官方协议解析帧类型: req(res)/res/event/ping
                     try
                     {
                         using var doc = JsonDocument.Parse(text);
@@ -173,36 +173,45 @@ namespace RimWorldMCP
                         if (!root.TryGetProperty("type", out var t)) continue;
                         var type = t.GetString();
 
-                        if (type == "evt" || type == "event")
+                        switch (type)
                         {
-                            if (root.TryGetProperty("event", out var ev) && ev.GetString() == "connect.challenge"
-                                && root.TryGetProperty("payload", out var pl) && pl.TryGetProperty("nonce", out var nonce))
-                            {
-                                await SendChallengeResponse(nonce.GetString() ?? "");
-                            }
-                        }
-                        else if (type == "res")
-                        {
-                            if (root.TryGetProperty("ok", out var ok) && ok.GetBoolean()
-                                && root.TryGetProperty("payload", out var payload)
-                                && payload.TryGetProperty("type", out var pt) && pt.GetString() == "hello-ok")
-                            {
-                                // 从 hello-ok 读取 tick 间隔
-                                if (payload.TryGetProperty("policy", out var policy)
-                                    && policy.TryGetProperty("tickIntervalMs", out var tiv) && tiv.TryGetInt32(out var iv))
-                                    _tickIntervalMs = iv;
+                            case "event":
+                                if (root.TryGetProperty("event", out var ev))
+                                {
+                                    var evt = ev.GetString();
+                                    if (evt == "connect.challenge"
+                                        && root.TryGetProperty("payload", out var pl)
+                                        && pl.TryGetProperty("nonce", out var nonce))
+                                    {
+                                        await SendChallengeResponse(nonce.GetString() ?? "");
+                                    }
+                                    else if (evt == "tick")
+                                    {
+                                        _lastTick = DateTime.UtcNow;
+                                    }
+                                }
+                                break;
 
-                                _lastTick = DateTime.UtcNow;
-                                _helloOk?.TrySetResult(true);
-                            }
-                        }
-                        else if (type == "event" || type == "evt")
-                        {
-                            if (root.TryGetProperty("event", out var ev) && ev.GetString() == "tick")
-                                _lastTick = DateTime.UtcNow;
+                            case "res":
+                                if (root.TryGetProperty("ok", out var ok) && ok.GetBoolean()
+                                    && root.TryGetProperty("payload", out var payload)
+                                    && payload.TryGetProperty("type", out var pt) && pt.GetString() == "hello-ok")
+                                {
+                                    if (payload.TryGetProperty("policy", out var policy)
+                                        && policy.TryGetProperty("tickIntervalMs", out var tiv) && tiv.TryGetInt32(out var iv))
+                                        _tickIntervalMs = iv;
+
+                                    _lastTick = DateTime.UtcNow;
+                                    _helloOk?.TrySetResult(true);
+                                }
+                                break;
+
+                            case "ping":
+                                await SendJson(new { type = "pong" });
+                                break;
                         }
 
-                        // tick 超时检查 (2x tickIntervalMs)
+                        // tick 超时检查 (2x tickIntervalMs, 官方协议要求)
                         if (_state == ClientState.Ready && (DateTime.UtcNow - _lastTick).TotalMilliseconds > _tickIntervalMs * 2)
                         {
                             McpLog.Warn("[ws] tick 超时，连接可能已断开");
