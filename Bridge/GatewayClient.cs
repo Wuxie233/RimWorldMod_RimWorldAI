@@ -31,6 +31,9 @@ namespace RimWorldMCP
         private static TaskCompletionSource<bool>? _helloOk;
         private static int _tickIntervalMs = 30000; // 默认 30s，hello-ok 可能覆盖
         private static DateTime _lastTick = DateTime.MinValue;
+        private static int _reconnectDelayMs = 5000;
+        private static int _reconnectAttempts = 0;
+        private const int MaxReconnectDelayMs = 60000;
 
         public static ClientState State => _state;
         public static bool IsConnected => _state >= ClientState.Handshake;
@@ -66,6 +69,8 @@ namespace RimWorldMCP
                 if (completed == _helloOk.Task && _helloOk.Task.Result)
                 {
                     _state = ClientState.Ready;
+                    _reconnectAttempts = 0;
+                    _reconnectDelayMs = 5000;
                     McpLog.Info("[ws] 握手完成");
                 }
                 else
@@ -83,7 +88,12 @@ namespace RimWorldMCP
         public static async Task SendMessage(string text)
         {
             if (!IsReady) return;
-            await SendRpc("agent.send", new { text });
+            await SendRpc("agent", new
+            {
+                message = text,
+                sessionId = "rimworld",
+                idempotencyKey = Guid.NewGuid().ToString("N")
+            });
         }
 
         public static async Task SendRpc(string method, object? payload = null)
@@ -147,7 +157,7 @@ namespace RimWorldMCP
         // "v3|<deviceId>|<clientId>|<clientMode>|<role>|<scopes>|<signedAtMs>|<token>|<nonce>|<platform>|<deviceFamily>"
         private static string SignDevicePayload(string nonce, long signedAtMs, string platform)
         {
-            var scopes = "operator.read,operator.write";
+            var scopes = "operator.read,operator.write,operator.admin";
             var payload = $"v3|{_deviceId}|gateway-client|backend|operator|{scopes}|{signedAtMs}|{_token}|{nonce}|{platform}|";
             var data = Encoding.UTF8.GetBytes(payload);
             var signer = new Ed25519Signer();
@@ -182,7 +192,7 @@ namespace RimWorldMCP
                     mode = "backend"
                 },
                 role = "operator",
-                scopes = new[] { "operator.read", "operator.write" },
+                scopes = new[] { "operator.read", "operator.write", "operator.admin" },
                 caps = new[] { "tool-events" },
                 locale = "zh-CN",
                 userAgent = "RimWorldMCP/1.0",
@@ -287,6 +297,17 @@ namespace RimWorldMCP
             catch (Exception ex) { McpLog.Warn($"[ws] 接收异常: {ex.Message}"); }
 
             _state = ClientState.Disconnected;
+
+            // 自动重连（非主动断开时）
+            if (!string.IsNullOrEmpty(_url) && !ct.IsCancellationRequested)
+            {
+                _reconnectAttempts++;
+                var delay = Math.Min(_reconnectDelayMs * _reconnectAttempts, MaxReconnectDelayMs);
+                McpLog.Info($"[ws] {delay / 1000}s 后自动重连 (第 {_reconnectAttempts} 次)...");
+                try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
+                if (!ct.IsCancellationRequested)
+                    _ = Connect(_url, _token, _password);
+            }
         }
     }
 }

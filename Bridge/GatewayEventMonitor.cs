@@ -63,7 +63,7 @@ namespace RimWorldMCP
         private static void Send(string message)
         {
             _ = GatewayClient.SendMessage(message);
-            McpLog.Info($"[event] {message}");
+            McpLog.Debug($"[event] {message}");
         }
     }
 }

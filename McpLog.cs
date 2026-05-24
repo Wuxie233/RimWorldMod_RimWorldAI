@@ -11,6 +11,7 @@ namespace RimWorldMCP
         public static void Info(string msg) => Enqueue("INFO", msg);
         public static void Warn(string msg) => Enqueue("WARN", msg);
         public static void Error(string msg) => Enqueue("ERROR", msg);
+        public static void Debug(string msg) => Enqueue("DEBUG", msg);
 
         private static void Enqueue(string level, string msg)
         {
