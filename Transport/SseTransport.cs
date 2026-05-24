@@ -219,8 +219,8 @@ namespace RimWorldMCP.Transport
 
             if (_mcpHandler != null)
             {
-                // 直接调用 McpServer 同步处理，不经过 OnMessage 事件
-                var result = _mcpHandler(body);
+                // Task.Run 避免阻塞 AcceptLoop，支持多个并发 /mcp 请求
+                var result = await Task.Run(() => _mcpHandler(body));
                 var bytes = Encoding.UTF8.GetBytes(result);
                 response.ContentType = "application/json";
                 response.ContentLength64 = bytes.Length;
