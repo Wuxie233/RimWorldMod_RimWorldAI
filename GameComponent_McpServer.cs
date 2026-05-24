@@ -38,7 +38,7 @@ namespace RimWorldMCP
             base.GameComponentUpdate();
             McpLog.Flush();
             McpCommandQueue.ProcessPending();
-            GatewayEventMonitor.Tick();
+            BridgeLifecycle.Tick();
             McpOssUploader.ProcessPendingUploads();
             McpCommandQueue.ProcessDeferredCleanup();
         }
@@ -97,8 +97,8 @@ namespace RimWorldMCP
 
                 McpLog.Info($"MCP 服务已启动，端口: {DefaultPort}, 传输: http");
 
-                // 连接到远程 MCP 桥接器（如 OpenClaw）
-                _ = ConnectToRemoteBridge();
+                // 启动桥接器（独立于 MCP Server）
+                _ = BridgeLifecycle.StartAsync();
             }
             catch (Exception ex)
             {
@@ -110,17 +110,6 @@ namespace RimWorldMCP
                 }
                 McpLog.Error($"启动失败: {ex.Message}");
             }
-        }
-
-        private static async Task ConnectToRemoteBridge()
-        {
-            var settings = RimWorldMCPMod.Instance?.Settings;
-            if (settings == null || settings.BridgeType == 0 || string.IsNullOrEmpty(settings.BridgeUrl))
-                return;
-
-            await GatewayClient.Connect(settings.BridgeUrl, settings.BridgeToken, settings.BridgePassword);
-            if (GatewayClient.IsConnected)
-                McpLog.Info($"[bridge] 已连接到 {McpModSettings.BridgeTypeLabels[settings.BridgeType]}: {settings.BridgeUrl}");
         }
 
         private void StopMcpService()
