@@ -52,6 +52,9 @@ namespace RimWorldMCP
 
         public static readonly ConcurrentQueue<string> Incoming = new();
 
+        /// <summary>当前存档的会话 ID，持久化在 ExposeData 中。</summary>
+        public static string SessionId { get; set; } = "rimworld";
+
         // ========== 通用 RPC 调用（Vantix request() 模式） ==========
 
         /// <summary>发送请求并等待响应（expectFinal=true 时跳过中间 accepted 状态）</summary>
@@ -74,7 +77,7 @@ namespace RimWorldMCP
             await Request("agent", new
             {
                 message = text,
-                sessionId = "rimworld",
+                sessionId = SessionId,
                 idempotencyKey = Guid.NewGuid().ToString("N")
             }, expectFinal: true);
         }

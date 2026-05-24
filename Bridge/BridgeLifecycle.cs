@@ -8,7 +8,7 @@ namespace RimWorldMCP
     /// <summary>OpenClaw Gateway 连接生命周期管理 — 独立于 MCP Server</summary>
     public static class BridgeLifecycle
     {
-        private static int _connectionCheckInterval = 60; // 启动后等 1 秒再发 prompt
+        private static int _connectionCheckInterval = 10; // 启动后等 0.2 秒（需在 EventMonitor 首次 120 tick 之前入队）
 
         public static async Task StartAsync()
         {
@@ -20,7 +20,7 @@ namespace RimWorldMCP
             if (GatewayClient.IsConnected)
             {
                 McpLog.Info($"[bridge] 已连接到 {McpModSettings.BridgeTypeLabels[settings.BridgeType]}: {settings.BridgeUrl}");
-                _connectionCheckInterval = 120; // 连接后等 2 秒
+                _connectionCheckInterval = 30; // 连接后等 0.5 秒
             }
         }
 
@@ -49,13 +49,13 @@ namespace RimWorldMCP
             var prompt = LoadPromptFile();
             if (string.IsNullOrEmpty(prompt))
             {
-                _connectionCheckInterval = 120; // 延迟重试
+                _connectionCheckInterval = 30; // 延迟重试
                 return;
             }
 
             if (!GatewayClient.IsReady)
             {
-                _connectionCheckInterval = 120;
+                _connectionCheckInterval = 30;
                 return;
             }
 
