@@ -177,6 +177,104 @@ namespace RimWorldMCP.Tools
                     catch (Exception) { }
                 }
 
+                // 天气与温度
+                sb.AppendLine();
+                sb.AppendLine("## 天气与环境");
+                if (map != null)
+                {
+                    try
+                    {
+                        float outdoorTemp = map.mapTemperature.OutdoorTemp;
+                        sb.AppendLine($"- 室外温度: {outdoorTemp:F1}°C");
+                        var weather = map.weatherManager?.curWeather;
+                        if (weather != null)
+                        {
+                            sb.AppendLine($"- 天气: {weather.label}");
+                            if (weather.rainRate > 0) sb.AppendLine($"- 降雨: {weather.rainRate * 100f:F0}%");
+                            if (weather.snowRate > 0) sb.AppendLine($"- 降雪: {weather.snowRate * 100f:F0}%");
+                            if (weather.windSpeedFactor > 0.5f) sb.AppendLine($"- 风速: 高 ({weather.windSpeedFactor * 100f:F0}%)");
+                        }
+                        var season = GenLocalDate.Season(map);
+                        if (season != Season.Undefined)
+                        {
+                            string seasonLabel = season switch
+                            {
+                                Season.Spring => "春天",
+                                Season.Summer => "夏天",
+                                Season.Fall => "秋天",
+                                Season.Winter => "冬天",
+                                _ => season.ToString()
+                            };
+                            sb.AppendLine($"- 季节: {seasonLabel}");
+                        }
+                    }
+                    catch (Exception) { sb.AppendLine("- 无法读取天气数据"); }
+                }
+
+                // 活跃警报（模拟右侧警告列表）
+                sb.AppendLine();
+                sb.AppendLine("## 活跃警报");
+                try
+                {
+                    bool hasAlert = false;
+                    if (map != null)
+                    {
+                        // 床铺检查
+                        int bedCount = map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>()
+                            .Count(b => !b.ForPrisoners && !b.Medical);
+                        if (freeColonists > bedCount)
+                        {
+                            sb.AppendLine($"- ⚠ 缺少床铺: {freeColonists} 人，仅 {bedCount} 张非囚用床");
+                            hasAlert = true;
+                        }
+
+                        // 防御工事检查
+                        int turrets = map.listerBuildings.AllBuildingsColonistOfClass<Building_Turret>().Count();
+                        if (turrets == 0 && map.wealthWatcher?.WealthTotal > 20000)
+                        {
+                            sb.AppendLine("- ⚠ 缺少防御工事: 无炮塔，财富已超 2 万");
+                            hasAlert = true;
+                        }
+
+                        // 食物检查（已在资源部分计算过天数）
+                        if (freeColonists > 0)
+                        {
+                            float totalFood = 0f;
+                            float dailyNeed = freeColonists * 1.6f;
+                            foreach (var kvp in map.resourceCounter?.AllCountedAmounts ?? new())
+                            {
+                                var def = kvp.Key;
+                                if (def.IsNutritionGivingIngestible && def.ingestible?.HumanEdible == true)
+                                    totalFood += kvp.Value * def.ingestible.CachedNutrition;
+                            }
+                            int daysWorth = (int)(totalFood / dailyNeed);
+                            if (daysWorth < 3)
+                            {
+                                sb.AppendLine($"- ⚠ 食物不足: 仅够 {daysWorth} 天");
+                                hasAlert = true;
+                            }
+                        }
+
+                        // 殖民者心情/危险检查
+                        foreach (var c in colonists ?? Enumerable.Empty<Pawn>())
+                        {
+                            if (c.needs?.mood?.CurLevelPercentage < 0.15f)
+                            {
+                                sb.AppendLine($"- ⚠ 极度崩溃风险: {c.Name.ToStringShort} (心情 {c.needs.mood.CurLevelPercentage * 100f:F0}%)");
+                                hasAlert = true;
+                            }
+                            if (c.health?.hediffSet?.BleedRateTotal > 0.5f)
+                            {
+                                sb.AppendLine($"- ⚠ 严重流血: {c.Name.ToStringShort} (失血率 {c.health.hediffSet.BleedRateTotal * 100f:F0}%/天)");
+                                hasAlert = true;
+                            }
+                        }
+                    }
+                    if (!hasAlert)
+                        sb.AppendLine("- 无活跃警报");
+                }
+                catch (Exception) { sb.AppendLine("- 无法读取警报"); }
+
                 // 当前工作单
                 sb.AppendLine();
                 sb.AppendLine("## 当前工作单");
