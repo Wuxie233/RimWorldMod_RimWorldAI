@@ -138,6 +138,9 @@ namespace RimWorldMCP
             registry.Register(new Tool_ManageBill());
             registry.Register(new Tool_DesignateBuild());
             registry.Register(new Tool_DesignateRoom());
+            registry.Register(new Tool_DesignatePlantsCut());
+            registry.Register(new Tool_DesignateMine());
+            registry.Register(new Tool_TakeScreenshot());
             registry.Register(new Tool_ListResearchProjects());
             registry.Register(new Tool_GetResearchProgress());
             registry.Register(new Tool_SetResearchProject());
