@@ -107,8 +107,11 @@ namespace RimWorldMCP
                 DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
             });
             var bytes = Encoding.UTF8.GetBytes(json);
+            McpLog.Info($"[ws] → {Truncate(json)}");
             await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, _cts?.Token ?? CancellationToken.None);
         }
+
+        private static string Truncate(string s) => s.Length <= 200 ? s : s.Substring(0, 197) + "...";
 
         // Gateway 完整握手：收到 challenge → 发 connect RPC → 等 hello-ok
         // backend + loopback + token 认证路径，可省略 device 签名（官方文档明确允许）
@@ -166,6 +169,7 @@ namespace RimWorldMCP
                     }
 
                     Incoming.Enqueue(text);
+                    McpLog.Info($"[ws] ← {Truncate(text)}");
 
                     // 按官方协议解析帧类型: req(res)/res/event/ping
                     try
