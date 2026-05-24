@@ -16,6 +16,7 @@ namespace RimWorldMCP
         private CancellationTokenSource? _cts;
         private static ITransport? s_activeTransport;
         private const int DefaultPort = 9877;
+        private const string DefaultHost = "0.0.0.0";
 
         public GameComponent_McpServer(Game game)
         {
@@ -80,8 +81,10 @@ namespace RimWorldMCP
                         $"skill://{skill.Name}", skill.Name, skill.Description);
                 }
 
-                // 4. 创建 Transport（默认 SSE + Streamable HTTP，端口 9877）
-                var transport = new SseTransport(DefaultPort);
+                // 4. 创建 Transport（SSE + Streamable HTTP）
+                var host = RimWorldMCPMod.Instance?.Settings?.McpHost ?? DefaultHost;
+                var port = RimWorldMCPMod.Instance?.Settings?.McpPort ?? DefaultPort;
+                var transport = new SseTransport(port, host);
 
                 // 5. 创建 McpServer + 注入 /mcp 同步处理器
                 var server = new McpServer(transport, toolRegistry);
@@ -95,7 +98,7 @@ namespace RimWorldMCP
                 _transport = transport;
                 s_activeTransport = transport;
 
-                McpLog.Info($"MCP 服务已启动，端口: {DefaultPort}, 传输: http");
+                McpLog.Info($"MCP 服务已启动: http://{host}:{port}, 传输: http");
 
                 // 启动桥接器（独立于 MCP Server）
                 _ = BridgeLifecycle.StartAsync();

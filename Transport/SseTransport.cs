@@ -12,6 +12,7 @@ namespace RimWorldMCP.Transport
     public class SseTransport : ITransport
     {
         private readonly int _port;
+        private readonly string _host;
         private HttpListener? _listener;
         private readonly ConcurrentDictionary<string, SseSession> _sessions = new();
         // /mcp 端点专用同步处理器（绕过 OnMessage→SendAsync 事件通道，避免 SSE 串台）
@@ -26,15 +27,16 @@ namespace RimWorldMCP.Transport
             _mcpHandler = handler;
         }
 
-        public SseTransport(int port = 9877)
+        public SseTransport(int port = 9877, string host = "0.0.0.0")
         {
             _port = port;
+            _host = host;
         }
 
         public Task StartAsync(CancellationToken ct)
         {
             _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{_port}/");
+            _listener.Prefixes.Add($"http://{_host}:{_port}/");
 
             try
             {
@@ -44,8 +46,8 @@ namespace RimWorldMCP.Transport
             {
                 var diagnostic = ex.ErrorCode switch
                 {
-                    5  => $"拒绝访问 — 端口 {_port} 需要管理员权限或 URL ACL 注册。使用管理员运行或执行: netsh http add urlacl url=http://localhost:{_port}/ user=Everyone",
-                    183 => $"端口 {_port} 已被占用 (Address Already In Use)。请关闭占用该端口的程序，或执行: netsh http delete urlacl url=http://localhost:{_port}/",
+                    5  => $"拒绝访问 — 端口 {_port} 需要管理员权限或 URL ACL 注册。使用管理员运行或执行: netsh http add urlacl url=http://{_host}:{_port}/ user=Everyone",
+                    183 => $"端口 {_port} 已被占用 (Address Already In Use)。请关闭占用该端口的程序，或执行: netsh http delete urlacl url=http://{_host}:{_port}/",
                     32  => $"端口 {_port} 共享冲突 — 正被其他进程使用",
                     87  => "URL 前缀格式无效",
                     _   => $"http.sys 错误 {ex.ErrorCode}"
@@ -54,7 +56,7 @@ namespace RimWorldMCP.Transport
                 throw;
             }
 
-            Log($"SSE 服务器已启动: http://localhost:{_port}");
+            Log($"SSE 服务器已启动: http://{_host}:{_port}");
 
             Task.Run(() => AcceptLoop(ct), ct);
             return Task.CompletedTask;

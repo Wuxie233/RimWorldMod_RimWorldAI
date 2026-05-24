@@ -24,6 +24,20 @@ namespace RimWorldMCP
             var listing = new Listing_Standard();
             listing.Begin(inRect);
 
+            // ====== MCP 服务器 ======
+            listing.Label("MCP 服务器");
+            listing.Gap(2f);
+
+            listing.Label("监听地址 (localhost / 0.0.0.0 / 内网 IP)");
+            Settings.McpHost = listing.TextEntry(Settings.McpHost);
+
+            listing.Label("端口");
+            var portStr = listing.TextEntry(Settings.McpPort.ToString());
+            if (int.TryParse(portStr, out int port) && port > 0 && port <= 65535)
+                Settings.McpPort = port;
+
+            listing.Gap(24f);
+
             // ====== 桥接器 ======
             listing.Label("桥接器类型");
             if (listing.ButtonText(Settings.BridgeType < McpModSettings.BridgeTypeLabels.Length

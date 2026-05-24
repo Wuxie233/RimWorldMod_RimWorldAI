@@ -4,6 +4,10 @@ namespace RimWorldMCP
 {
     public class McpModSettings : ModSettings
     {
+        // MCP 服务器
+        public string McpHost = "0.0.0.0";
+        public int McpPort = 9877;
+
         // 桥接器
         public int BridgeType = 0; // 0=无, 1=OpenClaw
         public string BridgeUrl = "";
@@ -24,6 +28,8 @@ namespace RimWorldMCP
         public override void ExposeData()
         {
             base.ExposeData();
+            Scribe_Values.Look(ref McpHost, "mcpHost", "0.0.0.0");
+            Scribe_Values.Look(ref McpPort, "mcpPort", 9877);
             Scribe_Values.Look(ref BridgeType, "bridgeType", 0);
             Scribe_Values.Look(ref BridgeUrl, "bridgeUrl", "");
             Scribe_Values.Look(ref BridgeToken, "bridgeToken", "");
