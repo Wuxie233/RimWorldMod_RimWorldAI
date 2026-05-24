@@ -27,15 +27,15 @@ namespace RimWorldMCP
         public static void Tick()
         {
             GatewayMessageQueue.Tick();
-            GatewayEventMonitor.Tick();
 
-            // 连接就绪后首次会话发送 Prompt
-            if (GatewayClient.IsReady
-                && !GatewayMessageQueue.WasSessionPromptSent
-                && --_connectionCheckInterval <= 0)
+            // 首次会话 Prompt 入队（优先级 40 > Alert 10，确保最先发送）
+            if (GatewayClient.IsReady && !GatewayMessageQueue.WasSessionPromptSent)
             {
-                SendSessionPrompt();
+                if (--_connectionCheckInterval <= 0)
+                    SendSessionPrompt();
             }
+
+            GatewayEventMonitor.Tick();
         }
 
         public static void Stop()
@@ -60,8 +60,8 @@ namespace RimWorldMCP
             }
 
             GatewayMessageQueue.MarkSessionPromptSent();
-            McpLog.Info("[bridge] 发送会话 Prompt");
-            GatewayMessageQueue.SendNow(MessageCategory.SessionInit, prompt);
+            McpLog.Info("[bridge] 会话 Prompt 已入队");
+            GatewayMessageQueue.Enqueue(MessageCategory.SessionInit, prompt);
         }
 
         private static string LoadPromptFile()
