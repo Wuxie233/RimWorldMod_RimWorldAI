@@ -11,7 +11,7 @@ namespace RimWorldMCP
 {
     public static class McpOssUploader
     {
-        private const int MaxRetries = 5;
+        private const int MaxRetries = 30;
 
         private static readonly ConcurrentQueue<(string filePath, string objectKey, int enqueuedFrame, int retryCount)> _pending = new();
 
