@@ -11,10 +11,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>bin\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>bin\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,15 +48,22 @@
 
   <ItemGroup>
     <None Include="Skills\*.md" />
-    <None Include="publish\**\*" />
     <None Include="CLAUDE.md" />
     <None Include="Design.md" />
   </ItemGroup>
 
-  <Target Name="CopySkills" AfterTargets="Build">
-    <MakeDir Directories="$(OutputPath)..\..\Skills" />
-    <Copy SourceFiles="Skills\base-building.md;Skills\colony-management.md;Skills\combat-preparation.md;Skills\equipment-crafting.md;Skills\medical-care.md;Skills\research-management.md" DestinationFolder="$(OutputPath)..\..\Skills" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="Prompt.md" DestinationFolder="$(OutputPath)..\.." SkipUnchangedFiles="true" />
+  <!-- 构建后将 DLL 及 Mod 所需文件复制到 publish/ 目录 -->
+  <Target Name="CopyToPublish" AfterTargets="Build">
+    <MakeDir Directories="publish\1.6\Assemblies" />
+    <ItemGroup>
+      <_PublishDll Include="$(OutputPath)*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PublishDll)" DestinationFolder="publish\1.6\Assemblies" SkipUnchangedFiles="true" />
+    <MakeDir Directories="publish\Skills" />
+    <Copy SourceFiles="Skills\base-building.md;Skills\colony-management.md;Skills\combat-preparation.md;Skills\equipment-crafting.md;Skills\medical-care.md;Skills\research-management.md" DestinationFolder="publish\Skills" SkipUnchangedFiles="true" />
+    <MakeDir Directories="publish\About" />
+    <Copy SourceFiles="About\About.xml" DestinationFolder="publish\About" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="Prompt.md" DestinationFolder="publish" SkipUnchangedFiles="true" Condition="Exists('Prompt.md')" />
   </Target>
 
 
