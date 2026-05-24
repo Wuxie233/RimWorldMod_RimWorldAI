@@ -26,7 +26,7 @@ namespace RimWorldMCP
         public override void StartedNewGame()
         {
             base.StartedNewGame();
-            _sessionId = "rimworld/" + Guid.NewGuid().ToString("N").Substring(0, 12);
+            _sessionId = "rimworld-" + Guid.NewGuid().ToString("N").Substring(0, 12);
             StartMcpService();
         }
 
@@ -52,7 +52,7 @@ namespace RimWorldMCP
             Scribe_Values.Look(ref _sessionId, "mcpSessionId", "");
             // 旧存档没有此字段时自动生成
             if (Scribe.mode == LoadSaveMode.LoadingVars && string.IsNullOrEmpty(_sessionId))
-                _sessionId = "rimworld/" + Guid.NewGuid().ToString("N").Substring(0, 12);
+                _sessionId = "rimworld-" + Guid.NewGuid().ToString("N").Substring(0, 12);
         }
 
         public override void FinalizeInit()

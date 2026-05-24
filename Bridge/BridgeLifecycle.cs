@@ -8,8 +8,6 @@ namespace RimWorldMCP
     /// <summary>OpenClaw Gateway 连接生命周期管理 — 独立于 MCP Server</summary>
     public static class BridgeLifecycle
     {
-        private static int _connectionCheckInterval = 10; // 启动后等 0.2 秒（需在 EventMonitor 首次 120 tick 之前入队）
-
         public static async Task StartAsync()
         {
             var settings = RimWorldMCPMod.Instance?.Settings;
@@ -17,24 +15,16 @@ namespace RimWorldMCP
                 return;
 
             await GatewayClient.Connect(settings.BridgeUrl, settings.BridgeToken, settings.BridgePassword);
-            if (GatewayClient.IsConnected)
+            if (GatewayClient.IsReady)
             {
                 McpLog.Info($"[bridge] 已连接到 {McpModSettings.BridgeTypeLabels[settings.BridgeType]}: {settings.BridgeUrl}");
-                _connectionCheckInterval = 30; // 连接后等 0.5 秒
+                SendSessionPrompt();
             }
         }
 
         public static void Tick()
         {
             GatewayMessageQueue.Tick();
-
-            // 首次会话 Prompt 入队（优先级 40 > Alert 10，确保最先发送）
-            if (GatewayClient.IsReady && !GatewayMessageQueue.WasSessionPromptSent)
-            {
-                if (--_connectionCheckInterval <= 0)
-                    SendSessionPrompt();
-            }
-
             GatewayEventMonitor.Tick();
         }
 
@@ -47,17 +37,7 @@ namespace RimWorldMCP
         private static void SendSessionPrompt()
         {
             var prompt = LoadPromptFile();
-            if (string.IsNullOrEmpty(prompt))
-            {
-                _connectionCheckInterval = 30; // 延迟重试
-                return;
-            }
-
-            if (!GatewayClient.IsReady)
-            {
-                _connectionCheckInterval = 30;
-                return;
-            }
+            if (string.IsNullOrEmpty(prompt)) return;
 
             GatewayMessageQueue.MarkSessionPromptSent();
             McpLog.Info("[bridge] 会话 Prompt 已入队");
