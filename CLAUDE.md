@@ -41,6 +41,30 @@ RimWorldMCP/
 - **NuGet**: 仅 `System.Text.Json` 8.0.5（JSON 序列化）
 - **输出**: `publish/1.6/Assemblies/RimWorldMCP.dll`
 
+### IntVec3 坐标系统
+
+RimWorld 的 `IntVec3(x, y, z)` 字段含义：
+- `x` = 水平网格轴（东西方向）
+- `y` = **海拔高度层**（地面=0，多层建筑用）
+- `z` = **垂直网格轴**（南北方向）
+
+2D 地图的有效网格范围是 `(x: 0 ~ map.Size.x-1, z: 0 ~ map.Size.z-1)`。
+
+**Tool 参数映射规则**：MCP 用户的 `pos_x`/`pos_y`（2D 网格坐标）必须映射为 `new IntVec3(posX, 0, posY)`。
+- `pos_y`（用户 Y 坐标）→ `IntVec3.z`（网格垂直轴）
+- 海拔（`IntVec3.y`）始终为 0
+
+**禁止**写成 `new IntVec3(posX, posY, 0)`——这会把用户 Y 坐标塞进海拔字段，所有建筑落到 z=0 行。
+
+### 端口清理机制
+
+RimWorld 返回主菜单时 `Game.Dispose()` 不通知 GameComponent，导致上一 Game 实例的 HttpListener（http.sys 内核级 URL 注册）残留。
+
+- `GameComponent_McpServer.StopMcpService()` — 启动前调用，停止当前实例及静态残留的传输层
+- `s_activeTransport` — 静态字段跨 Game 实例追踪活跃监听器
+- `HttpListenerException` 错误码中文诊断（5=拒绝访问, 183=端口占用）
+- `_transport` 在 `StartAsync()` 成功后才赋值，失败保持 null 允许下次重试
+
 ## 部署
 
 ```bash
@@ -74,8 +98,8 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 ### 建造 (2)
 | Tool | 说明 | 数据源/操作 |
 |------|------|------------|
-| `designate_build` | 放置建造蓝图 | `GenConstruct.PlaceBlueprintForBuild()` (入队) |
-| `designate_room` | 快速建造矩形房间 | 批量 `PlaceBlueprintForBuild()` (入队) |
+| `designate_build` | 放置建造蓝图（参数: pos_x=水平, pos_y=垂直网格, 无 pos_z） | `GenConstruct.PlaceBlueprintForBuild()` (入队) |
+| `designate_room` | 快速建造矩形房间（参数: center_x=水平, center_y=垂直网格, 无 center_z） | 批量 `PlaceBlueprintForBuild()` (入队) |
 
 ### 研究 (3)
 | Tool | 说明 | 数据源/操作 |
@@ -156,3 +180,5 @@ Skill 是领域知识文件（Markdown + YAML frontmatter），存放在 `Skills
 - Tool 返回值：`ToolResult` → `McpServer` 包装为 `{"content":[{"type":"text","text":"..."}]}`
 - 写操作必须通过 `McpCommandQueue` 调度到主线程
 - `dotnet build` → `publish/1.6/Assemblies/RimWorldMCP.dll`
+- **坐标陷阱**：`IntVec3(x,y,z)` 中 `y` 是海拔，`z` 是网格垂直轴。MCP 用户的 `pos_y` 必须映射到 `IntVec3.z`，写 `new IntVec3(x, posY, 0)` 是 bug
+- **HttpListener 陷阱**：`StartAsync` 中 `HttpListener.Start()` 可能抛 `HttpListenerException`（端口占用/权限不足），需提供中文诊断；`_transport` 要在 `StartAsync` 成功后才赋值；RimWorld 返回主菜单会导致 Game 对象被 Dispose 但 GameComponent 不通知，需静态字段跨实例清理
