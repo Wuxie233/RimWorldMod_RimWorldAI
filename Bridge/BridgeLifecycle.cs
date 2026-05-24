@@ -78,17 +78,23 @@ namespace RimWorldMCP
             try
             {
                 var asmPath = typeof(BridgeLifecycle).Assembly.Location;
+                McpLog.Debug($"[bridge] Assembly 路径: {asmPath ?? "null"}");
                 if (string.IsNullOrEmpty(asmPath)) return "";
 
                 var asmDir = Path.GetDirectoryName(asmPath);
+                McpLog.Debug($"[bridge] Assembly 目录: {asmDir ?? "null"}");
                 if (asmDir == null) return "";
 
                 // Assemblies/ → ../.. = mod root
                 var modRoot = Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
                 var prompt = Path.Combine(modRoot, "Prompt.md");
+                McpLog.Debug($"[bridge] 尝试读取 Prompt: {prompt} (Exists={File.Exists(prompt)})");
                 if (File.Exists(prompt)) return prompt;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                McpLog.Debug($"[bridge] FindPromptPath 异常: {ex.Message}");
+            }
 
             return "";
         }

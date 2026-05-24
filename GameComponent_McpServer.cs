@@ -180,39 +180,53 @@ namespace RimWorldMCP
                 // Assembly 路径: .../Mods/RimWorldMCP/1.6/Assemblies/RimWorldMCP.dll
                 // Skills 路径: .../Mods/RimWorldMCP/Skills/
                 var asmPath = typeof(GameComponent_McpServer).Assembly.Location;
+                McpLog.Info($"[skills] Assembly.Location = {asmPath ?? "null"}");
                 if (string.IsNullOrEmpty(asmPath))
+                {
+                    McpLog.Warn("[skills] Assembly.Location 为空，使用后备路径");
                     return FallbackSkillsDir();
+                }
 
                 var asmDir = Path.GetDirectoryName(asmPath);
+                McpLog.Info($"[skills] Assembly 目录 = {asmDir ?? "null"}");
                 if (asmDir == null)
+                {
+                    McpLog.Warn("[skills] GetDirectoryName 返回 null，使用后备路径");
                     return FallbackSkillsDir();
+                }
 
                 // 从 Assemblies/ 向上两级到 mod 根目录
                 var modRoot = Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
-                var skillsDir = Path.Combine(modRoot, "Skills");
+                McpLog.Info($"[skills] modRoot (asm/../..) = {modRoot}");
 
-                McpLog.Info($"尝试 Skills 路径: {skillsDir}");
+                var skillsDir = Path.Combine(modRoot, "Skills");
+                McpLog.Info($"[skills] primary Skills 路径 = {skillsDir} (Exists={Directory.Exists(skillsDir)})");
                 if (Directory.Exists(skillsDir))
                     return skillsDir;
 
                 // 备选：直接在 Skills/ 找（开发模式可能放这里）
                 var altDir = Path.Combine(modRoot, "..", "Skills");
+                McpLog.Info($"[skills] alt Skills 路径 = {altDir} (Exists={Directory.Exists(altDir)})");
                 if (Directory.Exists(altDir))
                     return altDir;
             }
             catch (Exception ex)
             {
-                McpLog.Warn($"查找 Skills 目录异常: {ex.Message}");
+                McpLog.Warn($"[skills] 查找 Skills 目录异常: {ex.Message}");
             }
 
+            McpLog.Warn("[skills] 所有路径均未找到 Skills 目录，使用后备路径");
             return FallbackSkillsDir();
         }
 
         private static string FallbackSkillsDir()
         {
             var dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Skills");
+            McpLog.Info($"[skills] FallbackSkillsDir = {dir} (Exists={Directory.Exists(dir)})");
             if (Directory.Exists(dir)) return dir;
+            McpLog.Warn("[skills] 后备路径也不存在，返回相对路径 'Skills'");
             return "Skills";
         }
+
     }
 }

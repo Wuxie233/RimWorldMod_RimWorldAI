@@ -3,15 +3,20 @@ using System.Collections.Concurrent;
 
 namespace RimWorldMCP
 {
+    public enum LogLevel { Debug = 0, Info = 1, Warn = 2, Error = 3 }
+
     public static class McpLog
     {
         private static readonly ConcurrentQueue<LogEntry> _queue = new();
         private const int MaxQueueSize = 500;
 
-        public static void Info(string msg) => Enqueue("INFO", msg);
-        public static void Warn(string msg) => Enqueue("WARN", msg);
-        public static void Error(string msg) => Enqueue("ERROR", msg);
-        public static void Debug(string msg) => Enqueue("DEBUG", msg);
+        /// <summary>最低输出级别。低于此级别的消息不入队。默认 Info（Debug 不输出）。</summary>
+        public static LogLevel MinLogLevel { get; set; } = LogLevel.Info;
+
+        public static void Debug(string msg) { if (MinLogLevel <= LogLevel.Debug) Enqueue("DEBUG", msg); }
+        public static void Info(string msg)  { if (MinLogLevel <= LogLevel.Info)  Enqueue("INFO", msg); }
+        public static void Warn(string msg)  { if (MinLogLevel <= LogLevel.Warn)  Enqueue("WARN", msg); }
+        public static void Error(string msg) { if (MinLogLevel <= LogLevel.Error) Enqueue("ERROR", msg); }
 
         private static void Enqueue(string level, string msg)
         {

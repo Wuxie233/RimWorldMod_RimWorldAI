@@ -15,13 +15,22 @@ namespace RimWorldMCP.Skills
         {
             _skills.Clear();
 
+            McpLog.Info($"[skills] LoadFromDirectory 接收路径: {skillsDir}");
             if (!Directory.Exists(skillsDir))
             {
-                Log($"Skills 目录不存在: {skillsDir}");
+                McpLog.Error($"[skills] Skills 目录不存在: {skillsDir}");
                 return;
             }
 
-            foreach (var file in Directory.GetFiles(skillsDir, "*.md"))
+            var files = Directory.GetFiles(skillsDir, "*.md");
+            McpLog.Info($"[skills] 在 {skillsDir} 中找到 {files.Length} 个 .md 文件");
+            if (files.Length == 0)
+            {
+                McpLog.Warn($"[skills] 目录存在但没有 .md 文件: {skillsDir}");
+                return;
+            }
+
+            foreach (var file in files)
             {
                 try
                 {
@@ -29,16 +38,20 @@ namespace RimWorldMCP.Skills
                     if (skill != null)
                     {
                         _skills[skill.Name] = skill;
-                        Log($"已加载 Skill: {skill.Name}");
+                        McpLog.Info($"[skills] 已加载 Skill: {skill.Name} ({file})");
+                    }
+                    else
+                    {
+                        McpLog.Warn($"[skills] 解析失败: {file}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log($"加载 Skill 失败 ({file}): {ex.Message}");
+                    McpLog.Error($"[skills] 加载 Skill 异常 ({file}): {ex.Message}");
                 }
             }
 
-            Log($"共加载 {_skills.Count} 个 Skill");
+            McpLog.Info($"[skills] 共加载 {_skills.Count} 个 Skill");
         }
 
         public SkillInfo? Get(string name)
@@ -56,7 +69,7 @@ namespace RimWorldMCP.Skills
 
             if (lines.Length < 4 || lines[0].Trim() != "---")
             {
-                Log($"Skill 文件缺少 frontmatter: {filePath}");
+                McpLog.Warn($"[skills] 缺少 frontmatter: {filePath}");
                 return null;
             }
 
@@ -89,7 +102,7 @@ namespace RimWorldMCP.Skills
 
             if (string.IsNullOrEmpty(name) || contentStart < 0)
             {
-                Log($"Skill 文件缺少必要字段: {filePath}");
+                McpLog.Warn($"[skills] 缺少必要字段: {filePath}");
                 return null;
             }
 
@@ -107,6 +120,5 @@ namespace RimWorldMCP.Skills
             };
         }
 
-        private static void Log(string msg) => McpLog.Info($"[skills] {msg}");
     }
 }

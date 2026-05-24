@@ -12,6 +12,7 @@ namespace RimWorldMCP
         {
             Instance = this;
             Settings = GetSettings<McpModSettings>();
+            McpLog.MinLogLevel = Settings.LogLevel;
         }
 
         public override string SettingsCategory()
@@ -23,6 +24,17 @@ namespace RimWorldMCP
         {
             var listing = new Listing_Standard();
             listing.Begin(inRect);
+
+            // ====== 日志级别 ======
+            listing.Label($"日志级别: {McpModSettings.LogLevelLabels[(int)Settings.LogLevel]}");
+            if (listing.ButtonText("切换"))
+            {
+                var next = (int)Settings.LogLevel + 1;
+                if (next >= McpModSettings.LogLevelLabels.Length) next = 0;
+                Settings.LogLevel = (LogLevel)next;
+                McpLog.MinLogLevel = Settings.LogLevel;
+            }
+            listing.Gap(24f);
 
             // ====== MCP 服务器 ======
             listing.Label("MCP 服务器");

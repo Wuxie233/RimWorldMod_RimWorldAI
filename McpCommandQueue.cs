@@ -14,16 +14,17 @@ namespace RimWorldMCP
     public static class McpCommandQueue
     {
         private static readonly ConcurrentQueue<McpCommand> _queue = new();
+        private const int MaxCommandsPerFrame = 5;
 
         public static void Enqueue(McpCommand command)
         {
             _queue.Enqueue(command);
         }
 
-        /// <summary>主线程每帧调用。无条件执行所有待处理命令。</summary>
+        /// <summary>主线程每帧调用。每帧最多处理 MaxCommandsPerFrame 个命令，防止卡帧。</summary>
         public static void ProcessPending()
         {
-            while (_queue.TryDequeue(out var command))
+            for (int i = 0; i < MaxCommandsPerFrame && _queue.TryDequeue(out var command); i++)
             {
                 try
                 {

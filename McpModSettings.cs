@@ -4,6 +4,9 @@ namespace RimWorldMCP
 {
     public class McpModSettings : ModSettings
     {
+        // 调试
+        public LogLevel LogLevel = LogLevel.Info;
+
         // MCP 服务器
         public string McpHost = "0.0.0.0";
         public int McpPort = 9877;
@@ -24,12 +27,16 @@ namespace RimWorldMCP
         public int OssSignedUrlExpiryHours = 24;
 
         public static readonly string[] BridgeTypeLabels = { "无", "OpenClaw" };
+        public static readonly string[] LogLevelLabels = { "Debug", "Info", "Warn", "Error" };
 
         public override void ExposeData()
         {
             base.ExposeData();
+            var logLevelInt = (int)LogLevel;
             Scribe_Values.Look(ref McpHost, "mcpHost", "0.0.0.0");
             Scribe_Values.Look(ref McpPort, "mcpPort", 9877);
+            Scribe_Values.Look(ref logLevelInt, "logLevel", (int)LogLevel.Info);
+            LogLevel = (LogLevel)logLevelInt;
             Scribe_Values.Look(ref BridgeType, "bridgeType", 0);
             Scribe_Values.Look(ref BridgeUrl, "bridgeUrl", "");
             Scribe_Values.Look(ref BridgeToken, "bridgeToken", "");

@@ -153,7 +153,7 @@ namespace RimWorldMCP
             if (_ws?.State != WebSocketState.Open) return;
             var json = JsonSerializer.Serialize(obj, McpJson.Options);
             var bytes = Encoding.UTF8.GetBytes(json);
-            McpLog.Info($"[ws] → {Truncate(json)}");
+            McpLog.Debug($"[ws] → {Truncate(json)}");
             await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true,
                 _cts?.Token ?? CancellationToken.None);
         }
@@ -190,7 +190,7 @@ namespace RimWorldMCP
                     }
 
                     Incoming.Enqueue(text);
-                    McpLog.Info($"[ws] ← {text}");
+                    McpLog.Debug($"[ws] ← {text}");
 
                     try
                     {
