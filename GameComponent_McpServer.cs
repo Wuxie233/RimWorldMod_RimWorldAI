@@ -187,6 +187,14 @@ namespace RimWorldMCP
             registry.Register(new Tool_GetSkills(skillRegistry));
             registry.Register(new Tool_ActiveSkill(skillRegistry));
             registry.Register(new Tool_AllowAllItems());
+            registry.Register(new Tool_PickUpItem());
+            registry.Register(new Tool_DropEquipment());
+            registry.Register(new Tool_StripPawn());
+            registry.Register(new Tool_ArrestPawn());
+            registry.Register(new Tool_RescuePawn());
+            registry.Register(new Tool_CapturePawn());
+            registry.Register(new Tool_IngestItem());
+            registry.Register(new Tool_ForceDress());
         }
 
         private static string FindSkillsDirectory()
