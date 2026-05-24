@@ -88,14 +88,14 @@ namespace RimWorldMCP
             };
 
             using var client = new AmazonS3Client(McpOssConfig.AccessKey, McpOssConfig.SecretKey, s3Config);
-            using var fileStream = new FileStream(Path.GetFullPath(filePath), FileMode.Open, FileAccess.Read, FileShare.Read);
+            byte[] fileBytes = File.ReadAllBytes(Path.GetFullPath(filePath));
+            using var stream = new MemoryStream(fileBytes);
             client.PutObject(new PutObjectRequest
             {
                 BucketName = McpOssConfig.BucketName,
                 Key = objectKey,
-                InputStream = fileStream,
-                ContentType = "image/png",
-                DisablePayloadSigning = true
+                InputStream = stream,
+                ContentType = "image/png"
             });
 
             McpLog.Info($"OSS 上传成功: {objectKey}");
