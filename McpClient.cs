@@ -59,12 +59,7 @@ namespace RimWorldMCP
                 }
                 else
                 {
-                    McpLog.Warn("[ws] 握手超时，尝试直接进入 Ready");
-                    // 简易模式：直接发 connect 轻量握手
-                    await SendJson(new { type = "connect", role = "client", client = "csharp" });
-                    if (!string.IsNullOrEmpty(_token))
-                        await SendJson(new { type = "auth", token = _token });
-                    _state = ClientState.Ready;
+                    McpLog.Warn("[ws] 握手超时");
                 }
             }
             catch (Exception ex)

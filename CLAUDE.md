@@ -116,14 +116,6 @@ McpClient 作为 WebSocket 客户端连接 OpenClaw Gateway（默认 `ws://127.0
 
 - `policy.tickIntervalMs` 用于心跳检测，超时 `2×tickIntervalMs` 断开
 
-### 连接流程（模式 B — 简易兼容，15 秒超时降级）
-
-Gateway 未发送 challenge 时自动降级：
-```json
-{"type":"connect","role":"client","client":"csharp"}
-{"type":"auth","token":"..."}
-```
-
 ### RPC 请求
 ```json
 {"type":"req","id":"1","method":"agent.send","params":{"text":"hello"}}
