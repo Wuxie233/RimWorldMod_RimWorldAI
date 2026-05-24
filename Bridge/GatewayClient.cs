@@ -33,6 +33,8 @@ namespace RimWorldMCP
         private static DateTime _lastTick = DateTime.MinValue;
         private static int _reconnectDelayMs = 5000;
         private static int _reconnectAttempts = 0;
+        private static bool _reconnecting = false;
+        private static bool _shuttingDown = false;
         private const int MaxReconnectDelayMs = 60000;
 
         public static ClientState State => _state;
@@ -47,6 +49,7 @@ namespace RimWorldMCP
             _url = wsUrl;
             _token = token ?? "";
             _password = password ?? "";
+            _shuttingDown = false;
             Disconnect();
 
             try
@@ -111,6 +114,7 @@ namespace RimWorldMCP
 
         public static void Disconnect()
         {
+            _shuttingDown = true;
             _cts?.Cancel();
             _state = ClientState.Disconnected;
             try { _ws?.Dispose(); } catch { }
@@ -298,15 +302,40 @@ namespace RimWorldMCP
 
             _state = ClientState.Disconnected;
 
-            // 自动重连（非主动断开时）
-            if (!string.IsNullOrEmpty(_url) && !ct.IsCancellationRequested)
+            // 非主动断开时，触发重连
+            if (!ct.IsCancellationRequested)
+                _ = ScheduleReconnect();
+        }
+
+        private static async Task ScheduleReconnect()
+        {
+            // 防重入，主动关闭则退出
+            if (_reconnecting || _shuttingDown) return;
+            _reconnecting = true;
+
+            try
             {
-                _reconnectAttempts++;
-                var delay = Math.Min(_reconnectDelayMs * _reconnectAttempts, MaxReconnectDelayMs);
-                McpLog.Info($"[ws] {delay / 1000}s 后自动重连 (第 {_reconnectAttempts} 次)...");
-                try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
-                if (!ct.IsCancellationRequested)
-                    _ = Connect(_url, _token, _password);
+                while (true)
+                {
+                    _reconnectAttempts++;
+                    var delay = Math.Min(_reconnectDelayMs * _reconnectAttempts, MaxReconnectDelayMs);
+                    McpLog.Info($"[ws] {delay / 1000}s 后自动重连 (第 {_reconnectAttempts} 次)...");
+                    await Task.Delay(delay);
+
+                    if (_shuttingDown) break;
+                    if (_state != ClientState.Disconnected) break;
+                    if (string.IsNullOrEmpty(_url)) break;
+
+                    try { await Connect(_url, _token, _password); }
+                    catch (Exception ex) { McpLog.Warn($"[ws] 重连失败: {ex.Message}"); }
+
+                    // Connect 返回后，如果状态不是 Ready 就继续循环
+                    if (_state != ClientState.Disconnected) break;
+                }
+            }
+            finally
+            {
+                _reconnecting = false;
             }
         }
     }
