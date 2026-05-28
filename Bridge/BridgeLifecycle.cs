@@ -34,7 +34,6 @@ namespace RimWorldMCP
         private const int IdleOverviewIntervalMs = 120000;
         private static int _dailyReportDay = -1;
         private static int _lastColonistCount = -1;
-        private static bool _initialStatsSent;
         private static int _lastNoColonistsSendMs;
         private const int NoColonistsResendMs = 60000;
         private static int _lastDialogCount;
@@ -87,7 +86,8 @@ namespace RimWorldMCP
             {
                 McpLog.Info("[bridge] CCBAutoStart=关闭，仅连接远程 Companion");
                 var ccbUrl = $"ws://{settings.CCBRemoteHost}:{settings.CCBRemotePort}";
-                await CCClient.Connect(ccbUrl, settings.CCBAuthToken);
+                var cStats = TryBuildColonyStats();
+                await CCClient.Connect(ccbUrl, settings.CCBAuthToken, cStats);
                 if (CCClient.IsReady)
                     McpLog.Info($"[bridge] 已连接到 Claude Code: {ccbUrl}");
                 else
@@ -118,7 +118,6 @@ namespace RimWorldMCP
 
         public static void Stop()
         {
-            _initialStatsSent = false;
             CCClient.Disconnect();
             StopCompanionProcess();
         }
@@ -203,13 +202,6 @@ namespace RimWorldMCP
 
             AutoPauseGuard();
             var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
-
-            // 首次连接后立即推送殖民地统计（填充 Web 侧边栏初始数据）
-            if (!_initialStatsSent)
-            {
-                _initialStatsSent = true;
-                SendCCMessage("Init", "", BuildColonyStats(map, colonists));
-            }
             int colonistCount = colonists.Count;
             int nowMs = Environment.TickCount;
 
@@ -334,7 +326,7 @@ namespace RimWorldMCP
                         McpLog.Info("[cc] 晨报时间，自动暂停游戏以待 AI 评估规划");
                     }
                     var dailyText = BuildDailyBriefing(map, colonists, colonistCount);
-                    SendCCMessage("DailyMorning", dailyText, BuildColonyStats(map, colonists));
+                    SendCCMessage("DailyMorning", dailyText, BuildColonyStatsStatic(map, colonists));
                     _dailyEventLog.Clear();
                 }
             }
@@ -345,7 +337,7 @@ namespace RimWorldMCP
                 && !ChatDisplayState.IsBusy)
             {
                 var overview = GameContextProvider.BuildColonyOverview(map, colonists, colonistCount);
-                SendCCMessage("IdleDetected", overview, BuildColonyStats(map, colonists));
+                SendCCMessage("IdleDetected", overview, BuildColonyStatsStatic(map, colonists));
             }
 
             // === 第4层：暂停过久提醒（AI 正在思考/调工具时跳过，不打扰） ===
@@ -672,7 +664,22 @@ namespace RimWorldMCP
         }
 
         /// <summary>构建结构化殖民地统计（push 到前端统计条）</summary>
-        private static object BuildColonyStats(Map map, List<Pawn> colonists)
+        private static object? TryBuildColonyStats()
+        {
+            try
+            {
+                var map = Find.CurrentMap;
+                if (map != null)
+                {
+                    var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                    return BuildColonyStatsStatic(map, colonists);
+                }
+            }
+            catch { /* 游戏未加载 */ }
+            return null;
+        }
+
+        public static object BuildColonyStatsStatic(Map map, List<Pawn> colonists)
         {
             int colonistCount = colonists.Count;
             float avgMood = colonistCount > 0
@@ -1277,7 +1284,8 @@ namespace RimWorldMCP
                 McpLog.Warn("[cc] Companion 启动超时(15s)，尝试连接...");
 
             var ccbUrl = $"ws://{settings.CCBRemoteHost}:{settings.CCBRemotePort}";
-            await CCClient.Connect(ccbUrl, settings.CCBAuthToken);
+            var cStats = TryBuildColonyStats();
+            await CCClient.Connect(ccbUrl, settings.CCBAuthToken, cStats);
             if (CCClient.IsReady)
                 McpLog.Info($"[bridge] 已连接到 Claude Code: {ccbUrl}");
             else

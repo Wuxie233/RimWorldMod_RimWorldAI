@@ -44,7 +44,7 @@ namespace RimWorldMCP
 
         // ========== 连接管理 ==========
 
-        public static async Task Connect(string wsUrl, string token = "")
+        public static async Task Connect(string wsUrl, string token = "", object? colonyStats = null)
         {
             _url = wsUrl;
             _token = token ?? "";
@@ -66,7 +66,7 @@ namespace RimWorldMCP
                 McpLog.Info($"[cc] WebSocket 已连接");
 
                 // 发送 hello
-                await SendHello();
+                await SendHello(colonyStats);
                 // 启动接收循环
                 _ = ReceiveLoop(_cts.Token);
 
@@ -166,7 +166,7 @@ namespace RimWorldMCP
 
         // ========== WebSocket IO ==========
 
-        private static async Task SendHello()
+        private static async Task SendHello(object? colonyStats = null)
         {
             var settings = RimWorldMCPMod.Instance.Settings;
             await SendJson(new
@@ -187,6 +187,7 @@ namespace RimWorldMCP
                     used = TokenUsageTracker.TotalAllTokens,
                     action = settings.TokenBudgetExceedAction == TokenBudgetExceedAction.Block ? "Block" : "Warn"
                 },
+                colonyStats,
                 thinking = new
                 {
                     mode = settings.CCBThinkingMode.ToString(),

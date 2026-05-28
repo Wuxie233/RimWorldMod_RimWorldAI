@@ -14,6 +14,7 @@ export interface WsMessage {
   auth?: { token?: string };
   client?: { name?: string; version?: string };
   budget?: { limit: number; used: number; action: string };
+  colonyStats?: Record<string, unknown>;
 }
 
 export interface StatusChange {
@@ -106,6 +107,10 @@ export function createWSServer(
             RuntimeState.tokenBudgetUsed = msg.budget.used || 0;
             RuntimeState.tokenBudgetAction = msg.budget.action || 'Block';
             console.log(`[cc-companion] Token 预算: ${RuntimeState.tokenBudgetUsed}/${RuntimeState.tokenBudgetLimit} (${RuntimeState.tokenBudgetAction})`);
+          }
+          // 解析殖民地统计（来自 C# hello，填充 Web 侧边栏初始数据）
+          if (msg.colonyStats) {
+            RuntimeState.lastColonyStats = msg.colonyStats as Record<string, unknown>;
           }
           // 解析思考模式（来自 Mod 设置，通过 hello 传递）
           const thinking = (msg as any).thinking;
