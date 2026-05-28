@@ -36,13 +36,48 @@ namespace RimWorldMCP.AgentRuntime
         /// <summary>每个 Agent 的事件队列</summary>
         public static readonly ConcurrentDictionary<string, ConcurrentQueue<ColonyEvent>> AgentEvents = new();
 
-        /// <summary>记录每个 Agent 上次运行时的游戏天数（用于检测新的一天）</summary>
+        /// <summary>每个 Agent 的当前状态</summary>
+        private static readonly Dictionary<string, AgentState> _agentStates = new()
+        {
+            ["overseer"] = AgentState.Sleeping,
+            ["economy"] = AgentState.Sleeping,
+            ["combat"] = AgentState.Sleeping,
+            ["medic"] = AgentState.Sleeping
+        };
+
+        /// <summary>当前活跃角色显示名（供 UI 展示）</summary>
+        public static string AgentRoleDisplay
+        {
+            get
+            {
+                foreach (var kv in _agentStates)
+                    if (kv.Value == AgentState.Running)
+                        return AgentDisplayName(kv.Key);
+                return "休眠中";
+            }
+        }
+
+        /// <summary>记录每个 Agent 上次运行时的游戏天数</summary>
         private static readonly Dictionary<string, int> _agentLastDay = new();
 
-        /// <summary>Combat Agent 本轮循环次数（用于兜底退出）</summary>
+        /// <summary>Combat Agent 本轮循环次数</summary>
         public static int CombatRoundCount { get; set; }
-        public const int CombatMaxRounds = 10;       // 超过此轮数强制退出
-        public const int CombatRemindRound = 6;       // 此轮开始追加退出提示
+        public const int CombatMaxRounds = 10;
+        public const int CombatRemindRound = 6;
+
+        public static AgentState GetState(string agentName) =>
+            _agentStates.TryGetValue(agentName, out var s) ? s : AgentState.Sleeping;
+
+        public static bool IsSleeping(string agentName) => GetState(agentName) == AgentState.Sleeping;
+
+        private static string AgentDisplayName(string name) => name switch
+        {
+            "overseer" => "总督 Overseer",
+            "economy" => "生产经理 Economy",
+            "combat" => "战斗指挥官 Combat",
+            "medic" => "医疗官 Medic",
+            _ => name
+        };
 
         static AgentOrchestrator()
         {
@@ -70,6 +105,7 @@ namespace RimWorldMCP.AgentRuntime
         public static void BeginAgent(string agentName)
         {
             ActiveAgent = agentName;
+            _agentStates[agentName] = AgentState.Running;
             if (agentName == "combat")
             {
                 IsCombatActive = true;
@@ -78,9 +114,10 @@ namespace RimWorldMCP.AgentRuntime
             Scheduler.MarkWoken(agentName);
         }
 
-        /// <summary>Agent 运行结束</summary>
+        /// <summary>Agent 运行结束，回到休眠</summary>
         public static void EndAgent(string agentName)
         {
+            _agentStates[agentName] = AgentState.Sleeping;
             if (agentName == "combat")
             {
                 IsCombatActive = false;

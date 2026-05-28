@@ -154,16 +154,16 @@ namespace RimWorldMCP
                     var config = AgentConfigs.Combat;
                     McpLog.Info($"[agent-runtime] 立即唤醒 Combat (Load={Scheduler.LoadScore})");
                     var prompt = ContextBuilder.Build(config);
-                    McpLog.Info($"[agent-runtime] Combat prompt 已构建 ({prompt.Length} 字符)");
                     AgentOrchestrator.BeginAgent(config.Name);
+                    PushAgentStatus();
                 }
                 if (needsMedic)
                 {
                     var config = AgentConfigs.Medic;
                     McpLog.Info($"[agent-runtime] 立即唤醒 Medic (L3 医疗)");
                     var prompt = ContextBuilder.Build(config);
-                    McpLog.Info($"[agent-runtime] Medic prompt 已构建 ({prompt.Length} 字符)");
                     AgentOrchestrator.BeginAgent(config.Name);
+                    PushAgentStatus();
                 }
 
                 Harmony.NotificationBus.HighDangerPending = false;
@@ -174,13 +174,14 @@ namespace RimWorldMCP
             {
                 if (config.Name == "combat") continue; // Combat 仅事件触发
 
+                // 休眠中才检查唤醒条件
+                if (!AgentOrchestrator.IsSleeping(config.Name)) continue;
+
                 bool shouldWake = false;
 
-                // 定时触发
                 if (config.IntervalGameHours > 0 && Scheduler.ShouldWake(config.Name, config.IntervalGameHours))
                     shouldWake = true;
 
-                // 每天触发
                 if (config.TriggerDaily && AgentOrchestrator.IsNewDay(config.Name))
                     shouldWake = true;
 
@@ -188,9 +189,9 @@ namespace RimWorldMCP
                 {
                     McpLog.Info($"[agent-runtime] 唤醒 {config.Name} (Load={Scheduler.LoadScore}, Mode={Scheduler.Mode})");
                     var prompt = ContextBuilder.Build(config);
-                    // TODO: 通过 CCB 发送 prompt 到 Claude SDK
                     McpLog.Info($"[agent-runtime] {config.Name} prompt 已构建 ({prompt.Length} 字符)");
                     AgentOrchestrator.BeginAgent(config.Name);
+                    PushAgentStatus();
                 }
             }
 
@@ -206,8 +207,8 @@ namespace RimWorldMCP
                 if (AgentOrchestrator.CombatRoundCount >= AgentOrchestrator.CombatMaxRounds)
                 {
                     McpLog.Warn("[agent-runtime] Combat 超时，强制退出");
-                    AgentOrchestrator.IsCombatActive = false;
-                    AgentOrchestrator.CombatRoundCount = 0;
+                    AgentOrchestrator.EndAgent("combat");
+                    PushAgentStatus();
                 }
                 else if (mapEnemies == 0 && AgentOrchestrator.CombatRoundCount >= AgentOrchestrator.CombatRemindRound)
                 {
@@ -216,5 +217,11 @@ namespace RimWorldMCP
             }
         }
 
+        private static void PushAgentStatus()
+        {
+            var role = AgentOrchestrator.AgentRoleDisplay;
+            McpLog.Info($"[agent-runtime] Agent 角色: {role}");
+            _ = CCClient.SendEventText("agent.status", "AgentRole", role);
+        }
     }
 }

@@ -135,7 +135,13 @@ export function getChatPageHtml(config: ChatPageConfig): string {
   .header-spacer { flex: 1; }
   .header-colony {
     font-size: 12px; color: var(--muted); font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+  }
+  .header-agent {
+    font-size: 11px; color: var(--blue); font-weight: 500;
+    padding: 1px 8px; border-radius: 4px;
+    background: var(--blue-bg); border: 1px solid var(--blue-border);
+    white-space: nowrap; flex-shrink: 0;
   }
   #info-btn {
     background: none; border: 1px solid var(--border-strong); color: var(--muted);
@@ -661,7 +667,8 @@ export function getChatPageHtml(config: ChatPageConfig): string {
       <span class="header-title">RimWorld Bridge Agent</span>
       <span class="header-spacer"></span>
       <span class="header-colony" id="colony-name">--</span>
-      <button id="info-btn" title="SDK 信息">i</button>
+      <span class="header-agent" id="agent-role">休眠中</span>
+	      <button id="info-btn" title="SDK 信息">i</button>
     </div>
     <div class="header-meta" id="header-meta">
       <span class="hdr-budget" id="hdr-budget">Token --</span>
@@ -1018,6 +1025,11 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     }
   }
 
+  function updateAgentRole(role) {
+    var el = document.getElementById('agent-role');
+    if (el) el.textContent = role || '休眠中';
+  }
+
   function updateBudgetStatus(data) {
     if (!hdrBudget) return;
     var limit = data.limit || 0;
@@ -1095,6 +1107,10 @@ export function getChatPageHtml(config: ChatPageConfig): string {
         sendBtn.disabled = false;
         hideReading();
         loadHistory();
+        break;
+
+      case 'agent-status':
+        updateAgentRole(msg.role);
         break;
 
       case 'colony-stats':

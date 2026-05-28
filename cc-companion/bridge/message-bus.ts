@@ -107,6 +107,16 @@ export class MessageBus {
   }
 
   /**
+   * 广播当前活跃的 Agent 角色（Overseer/Economy/Combat/Medic/休眠中）。
+   *
+   * 触发时机：Agent Runtime 唤醒/休眠 Agent 时。
+   * 消费者：Web 页面 header agent-role 显示。
+   */
+  publishAgentStatus(role: string): void {
+    this.send({ type: 'agent-status', role });
+  }
+
+  /**
    * 广播 Companion 级别的错误通知（非 SDK 错误）。
    *
    * 当前场景：Token 预算超额且为 Block 模式时，阻止消息并通知所有客户端。

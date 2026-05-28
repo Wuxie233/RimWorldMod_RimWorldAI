@@ -152,6 +152,12 @@ async function main(): Promise<void> {
       const payload = (wsMessage.payload || {}) as Record<string, unknown>;
       const text: string = (payload.text as string) || '';
 
+      // Game Bus：Agent 角色状态 → Web 头部显示
+      if (wsMessage.event === 'agent.status' && text) {
+        bus.publishAgentStatus(text);
+        return;
+      }
+
       // Game Bus：回显用户发言到所有 UI 客户端（不经 SDK，零延迟）
       if (text) {
         console.log(`[user] ${text}`);
