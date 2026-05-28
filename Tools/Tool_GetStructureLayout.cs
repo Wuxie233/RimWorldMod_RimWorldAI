@@ -327,6 +327,14 @@ namespace RimWorldMCP.Tools
                 if (!RoomIntersectsRange(room, minX, minY, maxX, maxY))
                     continue;
 
+                // 跳过完全在迷雾中的房间（取首尾两格抽样判断）
+                var roomCells = room.Cells;
+                if (roomCells.Count() > 0)
+                {
+                    var first = roomCells.First();
+                    if (first.Fogged(map)) continue;
+                }
+
                 matchedRooms.Add(room);
             }
 
