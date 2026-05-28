@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RimWorld;
@@ -363,16 +362,10 @@ namespace RimWorldMCP.MapRendering
                 assignedDefNames.Add(def.defName);
             }
 
-            // 计算 Hash
-            _dictHash = ComputeHash(allDefs);
-            McpLog.Info($"[SymbolDictionary] 重建完成, 固定: {_forward.Count - unassigned.Count}, 动态: {unassigned.Count}, Hash: {_dictHash}");
-        }
-
-        private static string ComputeHash(List<Def> allDefs)
-        {
+            // 计算 Hash — 排序后拼接长度，mod 增删必然改变
             var sortedNames = allDefs.Select(d => d.defName).OrderBy(n => n).ToList();
-            var combined = string.Join(",", sortedNames);
-            return combined.Length.ToString("x8");
+            _dictHash = string.Join(",", sortedNames).Length.ToString("x8");
+            McpLog.Info($"[SymbolDictionary] 重建完成, 固定: {_forward.Count - unassigned.Count}, 动态: {unassigned.Count}, Hash: {_dictHash}");
         }
 
         // ---- 查询方法 ----
@@ -472,7 +465,8 @@ namespace RimWorldMCP.MapRendering
                 var allDefs = new List<Def>();
                 allDefs.AddRange(DefDatabase<ThingDef>.AllDefs);
                 allDefs.AddRange(DefDatabase<TerrainDef>.AllDefs);
-                string currentHash = ComputeHash(allDefs);
+                var sortedNames = allDefs.Select(d => d.defName).OrderBy(n => n).ToList();
+                string currentHash = string.Join(",", sortedNames).Length.ToString("x8");
 
                 if (savedHash != currentHash)
                 {
