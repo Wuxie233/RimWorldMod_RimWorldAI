@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldMCP.Compression;
+using RimWorldMCP.MapRendering;
 using Verse;
 
 namespace RimWorldMCP.Tools
@@ -9,55 +12,25 @@ namespace RimWorldMCP.Tools
     public class Tool_TerrainGrid : ITool
     {
         public string Name => "terrain_grid";
-        public string Description => "获取指定范围的地形类型文本网格图。用于了解地表类型分布。坐标范围为闭区间（两端坐标均包含）。";
+        public string Description => "获取指定 chunk 的地形类型网格（分块压缩）。先用 list_chunks 获取 chunk_id 列表。";
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
-                pos_x = new { type = "integer", description = "左上 X 坐标" },
-                pos_y = new { type = "integer", description = "左上 Y 坐标" },
-                end_x = new { type = "integer", description = "右下 X 坐标（可选）" },
-                end_y = new { type = "integer", description = "右下 Y 坐标（可选）" }
+                chunk_id = new { type = "string", description = "Chunk ID，格式 \"X_Z\"" }
             },
-            required = new[] { "pos_x", "pos_y" }
+            required = new[] { "chunk_id" }
         });
-
-        private static char TerrainChar(TerrainDef t)
-        {
-            if (t == null) return '?';
-            string dn = t.defName;
-            if (dn.Contains("WaterDeep")) return '〰';
-            if (dn.Contains("Water")) return '≈';
-            if (dn.Contains("Marsh") || dn.Contains("Mud")) return '〰';
-            if (dn.Contains("Sand")) return '·';
-            if (dn.Contains("RichSoil")) return ':';
-            if (dn.Contains("Soil")) return '.';
-            if (dn.Contains("Gravel")) return ',';
-            if (dn.Contains("Ice")) return '█';
-            if (dn.Contains("Rock") && !dn.Contains("Sandstone") && !dn.Contains("Granite") && !dn.Contains("Limestone") && !dn.Contains("Slate") && !dn.Contains("Marble"))
-                return '#';
-            if (dn.Contains("Rough") || dn.Contains("Smooth")) return '█';
-            if (dn.Contains("Carpet")) return '▣';
-            if (dn.Contains("Wood") || dn.Contains("Board")) return '▤';
-            if (dn.Contains("Tile") || dn.Contains("Flagstone") || dn.Contains("Concrete") || dn.Contains("Paved")) return '◇';
-            return '.';
-        }
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
             if (args == null) return ToolResult.Error("缺少参数");
-            if (!args.Value.TryGetProperty("pos_x", out var jX) || !jX.TryGetInt32(out var posX))
-                return ToolResult.Error("缺少必填参数: pos_x");
-            if (!args.Value.TryGetProperty("pos_y", out var jY) || !jY.TryGetInt32(out var posY))
-                return ToolResult.Error("缺少必填参数: pos_y");
-            int endX = posX, endY = posY;
-            if (args.Value.TryGetProperty("end_x", out var jEx)) jEx.TryGetInt32(out endX);
-            if (args.Value.TryGetProperty("end_y", out var jEy)) jEy.TryGetInt32(out endY);
-            int minX = Math.Min(posX, endX), maxX = Math.Max(posX, endX);
-            int minZ = Math.Min(posY, endY), maxZ = Math.Max(posY, endY);
-            if (maxX - minX > 80 || maxZ - minZ > 80)
-                return ToolResult.Error("范围不能超过 80x80");
+            if (!args.Value.TryGetProperty("chunk_id", out var jId))
+                return ToolResult.Error("缺少必填参数: chunk_id");
+            var chunkId = jId.GetString();
+            if (!MapChunker.TryParseChunkId(chunkId ?? "", out int xIndex, out int zIndex))
+                return ToolResult.Error($"无效的 chunk_id: {chunkId}（格式: X_Z）");
 
             return await McpCommandQueue.DispatchAsync(() =>
             {
@@ -65,35 +38,59 @@ namespace RimWorldMCP.Tools
                 {
                     var map = Find.CurrentMap;
                     if (map == null) return ToolResult.Error("当前没有可用地图。");
-                    int w = maxX - minX + 1, h = maxZ - minZ + 1;
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"## 地形 ({minX},{minZ})~({maxX},{maxZ}) [{w}x{h}]");
-                    for (int z = minZ; z <= maxZ; z++)
+
+                    var settings = RimWorldMCPMod.Instance?.Settings;
+                    int cw = settings?.ChunkWidth ?? 32;
+                    int ch = settings?.ChunkHeight ?? 32;
+                    var method = settings?.GridCompression ?? CompressionMethod.RLE;
+
+                    var chunk = MapChunker.GetChunkByIndex(xIndex, zIndex, map.Size.x, map.Size.z, cw, ch);
+                    var compressor = CompressorFactory.Create(method);
+                    var usedSymbols = new HashSet<char>();
+
+                    var rows = new char[chunk.Height][];
+                    for (int z = 0; z < chunk.Height; z++)
                     {
-                        for (int x = minX; x <= maxX; x++)
+                        rows[z] = new char[chunk.Width];
+                        for (int x = 0; x < chunk.Width; x++)
                         {
-                            var pos = new IntVec3(x, 0, z);
-                            if (pos.Fogged(map)) { sb.Append('?'); continue; }
-                            var terrain = map.terrainGrid.TerrainAt(pos);
-                            sb.Append(TerrainChar(terrain));
+                            var pos = new IntVec3(chunk.MinX + x, 0, chunk.MinZ + z);
+                            var (symbol, _) = CellCharProviders.ForTerrain(pos, map);
+                            rows[z][x] = symbol;
+                            usedSymbols.Add(symbol);
                         }
-                        sb.AppendLine();
                     }
-                    sb.AppendLine(":沃土  .土壤  ,砾石  ·沙地  ≈浅水  〰深水/沼泽  █岩石  □混凝土  ▤木地板  ◇石砖  ▣地毯  ?迷雾");
+
+                    chunk.CompressedData = compressor.Compress(rows, (chunk.XIndex, chunk.ZIndex));
+
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"## {Name}  Chunk({chunk.XIndex},{chunk.ZIndex})  世界({chunk.MinX},{chunk.MinZ})-({chunk.MaxX},{chunk.MaxZ})  [{chunk.Width}x{chunk.Height}]");
+                    sb.AppendLine($"## 压缩: {compressor.Name}  字典Hash: {SymbolDictionary.DictHash}");
+                    sb.AppendLine();
+                    sb.AppendLine(chunk.CompressedData);
+                    sb.AppendLine();
+                    sb.AppendLine("## 图例");
+                    sb.AppendLine(SymbolDictionary.GetLegendString(usedSymbols));
+
                     return ToolResult.Success(sb.ToString().TrimEnd());
                 }
                 catch (Exception ex) { return ToolResult.Error($"地形查询失败: {ex.Message}"); }
             });
         }
+
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args)
         {
             if (args == null) return null;
-            if (!args.Value.TryGetProperty("pos_x", out var jX) || !jX.TryGetInt32(out var x)) return null;
-            if (!args.Value.TryGetProperty("pos_y", out var jY) || !jY.TryGetInt32(out var y)) return null;
-            int ex = x, ey = y;
-            if (args.Value.TryGetProperty("end_x", out var jEX) && jEX.TryGetInt32(out var _ex)) ex = _ex;
-            if (args.Value.TryGetProperty("end_y", out var jEY) && jEY.TryGetInt32(out var _ey)) ey = _ey;
-            return (Math.Min(x, ex), Math.Min(y, ey), Math.Max(x, ex), Math.Max(y, ey));
+            if (!args.Value.TryGetProperty("chunk_id", out var jId)) return null;
+            var chunkId = jId.GetString();
+            if (!MapChunker.TryParseChunkId(chunkId ?? "", out int xIndex, out int zIndex)) return null;
+            var map = Find.CurrentMap;
+            if (map == null) return null;
+            var settings = RimWorldMCPMod.Instance?.Settings;
+            int cw = settings?.ChunkWidth ?? 32;
+            int ch = settings?.ChunkHeight ?? 32;
+            var chunk = MapChunker.GetChunkByIndex(xIndex, zIndex, map.Size.x, map.Size.z, cw, ch);
+            return (chunk.MinX, chunk.MinZ, chunk.MaxX, chunk.MaxZ);
         }
     }
 }

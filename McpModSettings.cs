@@ -4,6 +4,7 @@ namespace RimWorldMCP
 {
     public enum TokenBudgetExceedAction { Block, Warn }
     public enum ThinkingMode { Default, Disabled, Adaptive, Fixed }
+    public enum CompressionMethod { Uncompressed, RLE, RowRefRLE }
 
     public class McpModSettings : ModSettings
     {
@@ -49,10 +50,16 @@ namespace RimWorldMCP
         public string CCBThinkingEffort = "medium";
         public int CCBMaxThinkingTokens = 0;
 
+        // 地图分块与压缩
+        public int ChunkWidth = 32;
+        public int ChunkHeight = 32;
+        public CompressionMethod GridCompression = CompressionMethod.RLE;
+
         public static readonly string[] LogLevelLabels = { "Debug", "Info", "Warn", "Error" };
         public static readonly string[] BudgetActionLabels = { "暂停游戏并阻止", "仅警告通知" };
         public static readonly string[] ThinkingModeLabels = { "跟随默认", "禁用思考", "自适应", "固定Token" };
         public static readonly string[] ThinkingEffortLabels = { "low", "medium", "high", "xhigh", "max" };
+        public static readonly string[] CompressionMethodLabels = { "未压缩", "RLE", "行引用+RLE" };
 
         public override void ExposeData()
         {
@@ -90,6 +97,11 @@ namespace RimWorldMCP
             CCBThinkingMode = (ThinkingMode)thinkingMode;
             Scribe_Values.Look(ref CCBThinkingEffort, "ccbThinkingEffort", "medium");
             Scribe_Values.Look(ref CCBMaxThinkingTokens, "ccbMaxThinkingTokens", 0);
+            var gridCompression = (int)GridCompression;
+            Scribe_Values.Look(ref ChunkWidth, "chunkWidth", 32);
+            Scribe_Values.Look(ref ChunkHeight, "chunkHeight", 32);
+            Scribe_Values.Look(ref gridCompression, "gridCompression", (int)CompressionMethod.RLE);
+            GridCompression = (CompressionMethod)gridCompression;
         }
     }
 }

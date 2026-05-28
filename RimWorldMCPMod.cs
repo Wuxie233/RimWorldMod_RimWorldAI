@@ -66,6 +66,8 @@ namespace RimWorldMCP
             if (Settings.CCBThinkingMode == ThinkingMode.Adaptive) h += 30f;
             if (Settings.CCBThinkingMode == ThinkingMode.Fixed) h += 40f;
             h += 80f; // 安装按钮
+            // 地图渲染
+            h += 100f;
             // Token 预算
             h += 140f;
             if (Settings.TokenBudgetExceedAction == TokenBudgetExceedAction.Warn) h += 50f;
@@ -240,6 +242,26 @@ namespace RimWorldMCP
                 if (!installing && listing.ButtonText("  安装"))
                     BridgeLifecycle.InstallCompanion();
             }
+
+            // ==================== 地图渲染 ====================
+            DrawSectionHeader(listing, "地图渲染");
+            listing.Label($"分块尺寸: {Settings.ChunkWidth} x {Settings.ChunkHeight}");
+            if (listing.ButtonText("切换分块宽度"))
+            {
+                var sizes = new[] { 16, 24, 32, 48, 64 };
+                var idx = Array.IndexOf(sizes, Settings.ChunkWidth);
+                Settings.ChunkWidth = sizes[(idx + 1) % sizes.Length];
+                Settings.ChunkHeight = Settings.ChunkWidth;
+            }
+            listing.Label($"压缩方法: {McpModSettings.CompressionMethodLabels[(int)Settings.GridCompression]}");
+            if (listing.ButtonText("切换压缩方法"))
+            {
+                var next = (int)Settings.GridCompression + 1;
+                if (next >= McpModSettings.CompressionMethodLabels.Length) next = 0;
+                Settings.GridCompression = (CompressionMethod)next;
+            }
+            listing.Label("  RLE 和行引用可降低 Token 消耗 60-80%");
+            listing.Gap(4f);
 
             // ==================== Token 预算 ====================
             DrawSectionHeader(listing, "Token 预算");

@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using RimWorldMCP.MapRendering;
 using RimWorldMCP.Mcp;
 using RimWorldMCP.Skills;
 using RimWorldMCP.Tools;
@@ -109,6 +110,9 @@ namespace RimWorldMCP
                 // 1.5 从 ModSettings 加载 OSS 配置
                 if (RimWorldMCPMod.Instance != null)
                     McpOssConfig.LoadFromModSettings(RimWorldMCPMod.Instance.Settings);
+
+                // 1.6 初始化符号字典
+                SymbolDictionary.Initialize();
 
                 // 2. 创建 ToolRegistry + 注册 24 个 Tool
                 var toolRegistry = new ToolRegistry();
