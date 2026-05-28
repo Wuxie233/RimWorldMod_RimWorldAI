@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -99,15 +100,60 @@ namespace RimWorldMCP.Tools
 
                     // ---- 威胁 ----
                     int enemyCount = 0, downedEnemyCount = 0;
+                    var enemyGroups = new Dictionary<string, (int count, int nearX, int nearZ, float nearDist, string dir)>();
+                    var colonyCenter = new IntVec3(map.Size.x / 2, 0, map.Size.z / 2);
+
                     foreach (var pawn in map.mapPawns.AllPawnsSpawned)
                     {
                         if (pawn.Faction == null || !pawn.Faction.HostileTo(Faction.OfPlayer)) continue;
-                        if (pawn.Downed) downedEnemyCount++;
-                        else enemyCount++;
+                        if (pawn.Downed) { downedEnemyCount++; continue; }
+                        enemyCount++;
+
+                        var key = pawn.KindLabel;
+                        int dist = (int)pawn.Position.DistanceTo(colonyCenter);
+                        string dir = pawn.Position.x < colonyCenter.x ? "西" : "东";
+                        dir += pawn.Position.z < colonyCenter.z ? "北" : "南";
+
+                        if (enemyGroups.TryGetValue(key, out var g))
+                        {
+                            if (dist < g.nearDist)
+                                enemyGroups[key] = (g.count + 1, pawn.Position.x, pawn.Position.z, dist, dir);
+                            else
+                                enemyGroups[key] = (g.count + 1, g.nearX, g.nearZ, g.nearDist, g.dir);
+                        }
+                        else
+                        {
+                            enemyGroups[key] = (1, pawn.Position.x, pawn.Position.z, dist, dir);
+                        }
                     }
-                    if (enemyCount > 0 || downedEnemyCount > 0)
+
+                    if (enemyCount > 0)
                     {
-                        sb.AppendLine($"### ⚠ 威胁: {enemyCount} 活跃敌人, {downedEnemyCount} 倒地");
+                        sb.AppendLine($"### ⚠ 威胁: {enemyCount} 活跃敌人");
+                        sb.AppendLine("| 名称 | 数量 | 最近位置 | 方向 |");
+                        sb.AppendLine("|------|------|---------|------|");
+                        foreach (var kv in enemyGroups)
+                            sb.AppendLine($"| {kv.Key} | {kv.Value.count} | ({kv.Value.nearX},{kv.Value.nearZ}) | {kv.Value.dir}, ~{kv.Value.nearDist}格 |");
+                        if (downedEnemyCount > 0) sb.AppendLine($"*另有 {downedEnemyCount} 名敌人已倒地*");
+                        sb.AppendLine();
+                    }
+
+                    // ---- 无屋顶腐坏 ----
+                    const float DeteriorationAlertValueThreshold = 500f; // 总价值超过500银时提示
+                    float unroofedValue = 0f;
+                    int unroofedItemCount = 0;
+                    foreach (var t in map.listerThings.AllThings)
+                    {
+                        if (t.def.category != ThingCategory.Item) continue;
+                        if (t.Position.Roofed(map)) continue;
+                        if (StoreUtility.IsInValidBestStorage(t)) continue;
+                        unroofedValue += t.MarketValue * t.stackCount;
+                        unroofedItemCount++;
+                    }
+                    if (unroofedValue >= DeteriorationAlertValueThreshold)
+                    {
+                        sb.AppendLine($"### ⚠ 无屋顶腐坏风险: {unroofedItemCount} 件物品, 总价值 ~{unroofedValue:F0} 银");
+                        sb.AppendLine("→ Economy: 建议建造屋顶或移至室内储藏区");
                         sb.AppendLine();
                     }
 
