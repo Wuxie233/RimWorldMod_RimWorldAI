@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Verse;
 using RimWorld;
 
@@ -77,6 +78,27 @@ namespace RimWorldMCP.Tools
 
             if (newNotified.Count == 0)
                 return null;
+
+            // 通过 MCP 通知推送给已连接客户端
+            try
+            {
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    type = "deterioration",
+                    items = newNotified.Select(i => new
+                    {
+                        id = i.ThingID,
+                        label = i.Label,
+                        pos_x = i.PosX,
+                        pos_z = i.PosZ,
+                        pct = i.DegradationPct,
+                        danger = i.DangerType,
+                        detail = i.Detail
+                    })
+                });
+                SimpleMspServer.McpServiceHost.Instance?.SendEvent(payload);
+            }
+            catch { }
 
             // 冷却期内不重复推送
             if (tick - _lastNotifiedTick < NotifyCooldownTicks)
