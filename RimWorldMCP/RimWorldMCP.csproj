@@ -11,10 +11,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>..\publish\RimWorldMCP\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>..\publish\RimWorldMCP\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -68,28 +68,27 @@
     <Delete Files="$(OutputPath)$(AssemblyName).pdb" />
   </Target>
 
-  <!-- CC Companion: 复制源码到 publish（跨平台，排除无关目录） -->
-  <Target Name="CCCompanionBuild" AfterTargets="Build">
-    <PropertyGroup>
-      <CompanionSrc>$(MSBuildProjectDirectory)\cc-companion\</CompanionSrc>
-      <CompanionOut>$(MSBuildProjectDirectory)\publish\cc-companion\</CompanionOut>
-    </PropertyGroup>
-    <ItemGroup>
-      <CompanionFiles Include="$(CompanionSrc)**\*"
-        Exclude="$(CompanionSrc)dist\**;$(CompanionSrc)node_modules\**;$(CompanionSrc).idea\**;$(CompanionSrc).claude\**;$(CompanionSrc)README.md" />
-    </ItemGroup>
-    <Copy SourceFiles="@(CompanionFiles)" DestinationFolder="$(CompanionOut)%(RecursiveDir)" />
+  <!-- 复制 MOD 文件到 publish -->
+  <Target Name="CopyAbout" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\About\About.xml"
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\About\" />
   </Target>
-
-  <!-- 复制 README.md 到 publish -->
+  <Target Name="CopyLanguages" AfterTargets="Build">
+    <ItemGroup>
+      <LangFiles Include="$(MSBuildProjectDirectory)\Languages\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LangFiles)"
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\Languages\%(RecursiveDir)" />
+  </Target>
+  <Target Name="CopySkills" AfterTargets="Build">
+    <ItemGroup>
+      <SkillFiles Include="$(MSBuildProjectDirectory)\Skills\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SkillFiles)"
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\Skills\%(RecursiveDir)" />
+  </Target>
   <Target Name="CopyReadme" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\README.md"
           DestinationFolder="$(MSBuildProjectDirectory)\publish\" />
   </Target>
-
-  <!-- 打包时清理 claude-sessions（运行时生成的会话数据不应发布） -->
-  <Target Name="CleanSessions" AfterTargets="Build">
-    <RemoveDir Directories="$(MSBuildProjectDirectory)\publish\claude-sessions" ContinueOnError="true" />
-  </Target>
-
 </Project>

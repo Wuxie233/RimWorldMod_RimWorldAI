@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -12,10 +12,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>..\publish\RimWorldAgent\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>..\publish\RimWorldAgent\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,6 +42,7 @@
     <Reference Include="System.Net.Http" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
     <ProjectReference Include="..\SimpleMspServer\SimpleMspServer.csproj" />
+    <ProjectReference Include="..\RimWorldMCP\RimWorldMCP.csproj" />
   </ItemGroup>
 
   <Target Name="CopyAbout" AfterTargets="Build">

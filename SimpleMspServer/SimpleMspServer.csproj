@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -13,10 +13,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>..\publish\SimpleMspServer\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>..\publish\SimpleMspServer\</OutputPath>
+    <OutputPath>publish\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
