@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -11,36 +11,36 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>..\publish\RimWorldMCP\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>..\publish\RimWorldMCP\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SimpleMspServer\SimpleMspServer.csproj" />
     <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Net.Http">
-      <HintPath>..\..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\System.Net.Http.dll</HintPath>
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\System.Net.Http.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
@@ -59,40 +59,29 @@
     <None Include="CLAUDE.md" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="publish\cc-companion\.claude\settings.local.json" />
-  </ItemGroup>
-
+  <!-- 构建前清空根 publish -->
   <Target Name="CleanPublish" BeforeTargets="BeforeBuild">
-    <RemoveDir Directories="$(MSBuildProjectDirectory)\publish" ContinueOnError="true" />
+    <RemoveDir Directories="..\publish\RimWorldMCP\1.6\Assemblies" ContinueOnError="true" />
   </Target>
 
-  <!-- 构建后删掉 pdb -->
   <Target Name="DeletePdb" AfterTargets="Build">
     <Delete Files="$(OutputPath)$(AssemblyName).pdb" />
   </Target>
 
-  <!-- 复制 MOD 文件到 publish -->
+  <!-- 从 resource/ 复制 MOD 元数据到根 publish -->
   <Target Name="CopyAbout" AfterTargets="Build">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\About\About.xml"
-          DestinationFolder="$(MSBuildProjectDirectory)\publish\About\" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\About.xml"
+          DestinationFolder="..\publish\RimWorldMCP\About\" />
   </Target>
   <Target Name="CopyLanguages" AfterTargets="Build">
     <ItemGroup>
-      <LangFiles Include="$(MSBuildProjectDirectory)\Languages\**\*" />
+      <LangFiles Include="$(MSBuildProjectDirectory)\resource\Languages\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(LangFiles)"
-          DestinationFolder="$(MSBuildProjectDirectory)\publish\Languages\%(RecursiveDir)" />
-  </Target>
-  <Target Name="CopySkills" AfterTargets="Build">
-    <ItemGroup>
-      <SkillFiles Include="$(MSBuildProjectDirectory)\Skills\**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(SkillFiles)"
-          DestinationFolder="$(MSBuildProjectDirectory)\publish\Skills\%(RecursiveDir)" />
+          DestinationFolder="..\publish\RimWorldMCP\Languages\%(RecursiveDir)" />
   </Target>
   <Target Name="CopyReadme" AfterTargets="Build">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\README.md"
-          DestinationFolder="$(MSBuildProjectDirectory)\publish\" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\README.md"
+          DestinationFolder="..\publish\RimWorldMCP\" />
   </Target>
 </Project>
