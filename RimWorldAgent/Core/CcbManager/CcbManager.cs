@@ -12,7 +12,7 @@ namespace RimWorldAgent.Core.CcbManager
         private Process? _process;
         private string _companionDir;
         private string _sessionsDir;
-        private string _nodeExe;
+        private string? _nodeExe;
         private int _ccbPort;
         private string? _ccbToken;
         private bool _ready;

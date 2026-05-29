@@ -45,12 +45,12 @@ namespace RimWorldAgent.Core.AgentRuntime
                         ["summary"] = new Dictionary<string, object> { ["type"] = "string", ["description"] = "战斗总结文本" }
                     }
                 },
-                Handler = async args =>
+                Handler = args =>
                 {
                     var summary = "";
                     if (args != null && args.Value.TryGetProperty("summary", out var s))
                         summary = s.GetString() ?? "";
-                    return (string.IsNullOrEmpty(summary) ? "战斗指挥官角色已退出。" : $"战斗指挥官已退出。\n总结: {summary}", true);
+                    return Task.FromResult((string.IsNullOrEmpty(summary) ? "战斗指挥官角色已退出。" : $"战斗指挥官已退出。\n总结: {summary}", true));
                 }
             });
 
@@ -65,14 +65,14 @@ namespace RimWorldAgent.Core.AgentRuntime
                 Name = "get_skills",
                 Description = "列出所有可用的领域知识 Skill",
                 InputSchema = new Dictionary<string, object> { ["type"] = "object", ["properties"] = new Dictionary<string, object>() },
-                Handler = async _ =>
+                Handler = _ =>
                 {
-                    if (_skillRegistry == null) return ("Skill 注册表未初始化。", false);
+                    if (_skillRegistry == null) return Task.FromResult(("Skill 注册表未初始化。", false));
                     var sb = new StringBuilder();
                     sb.AppendLine("## 可用领域知识");
                     foreach (var s in _skillRegistry.GetAll())
                         sb.AppendLine($"- **{s.Name}**: {s.Description}");
-                    return (sb.ToString().TrimEnd(), false);
+                    return Task.FromResult((sb.ToString().TrimEnd(), false));
                 }
             });
 
@@ -89,17 +89,17 @@ namespace RimWorldAgent.Core.AgentRuntime
                     },
                     ["required"] = new[] { "name" }
                 },
-                Handler = async args =>
+                Handler = args =>
                 {
-                    if (_skillRegistry == null) return ("Skill 注册表未初始化。", false);
+                    if (_skillRegistry == null) return Task.FromResult(("Skill 注册表未初始化。", false));
                     var name = args?.GetProperty("name").GetString() ?? "";
                     var skill = _skillRegistry.Get(name);
                     if (skill == null)
                     {
                         var names = string.Join(", ", _skillRegistry.GetAll().Select(s => s.Name));
-                        return ($"未知 Skill: {name}。可用: {names}", false);
+                        return Task.FromResult(($"未知 Skill: {name}。可用: {names}", false));
                     }
-                    return ($"# {skill.Name}\n\n{skill.Content}", false);
+                    return Task.FromResult(($"# {skill.Name}\n\n{skill.Content}", false));
                 }
             });
         }

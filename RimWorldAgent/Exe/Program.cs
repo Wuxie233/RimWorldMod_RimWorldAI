@@ -33,7 +33,7 @@ namespace RimWorldAgent
             CcbManager? ccb = null;
             if (!string.IsNullOrEmpty(ccbDir))
             {
-                ccb = new CcbManager(ccbDir, sessionDir);
+                ccb = new CcbManager(ccbDir!, sessionDir);
                 if (ccb.Start()) { Console.WriteLine("  CCB: 启动中..."); await ccb.WaitReadyAsync(); Console.WriteLine("  CCB: 就绪"); }
             }
             if (ccb == null || !ccb.IsReady) Console.WriteLine("  CCB: 未启动 (Agent 将在无 CCB 模式运行)");
