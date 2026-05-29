@@ -12,10 +12,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>publish\</OutputPath>
+    <OutputPath>publish\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>publish\</OutputPath>
+    <OutputPath>publish\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -47,12 +47,12 @@
 
   <Target Name="CopyAbout" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\About\About.xml"
-          DestinationFolder="$(OutputPath)About\" />
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\About\" />
   </Target>
 
   <Target Name="CopyReadme" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\README.md"
-          DestinationFolder="$(OutputPath)"
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\"
           Condition="Exists('$(MSBuildProjectDirectory)\README.md')" />
   </Target>
 
@@ -61,7 +61,7 @@
       <SkillFiles Include="$(MSBuildProjectDirectory)\Core\Skills\*.md" />
     </ItemGroup>
     <Copy SourceFiles="@(SkillFiles)"
-          DestinationFolder="$(OutputPath)Skills\" />
+          DestinationFolder="$(MSBuildProjectDirectory)\publish\Skills\" />
   </Target>
 
 </Project>

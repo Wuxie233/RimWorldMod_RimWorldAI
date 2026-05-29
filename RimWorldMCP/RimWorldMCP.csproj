@@ -11,10 +11,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>publish\</OutputPath>
+    <OutputPath>publish\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>publish\</OutputPath>
+    <OutputPath>publish\1.6\Assemblies\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
