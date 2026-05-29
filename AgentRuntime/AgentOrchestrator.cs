@@ -111,7 +111,6 @@ namespace RimWorldMCP.AgentRuntime
                 IsCombatActive = true;
                 CombatRoundCount = 0;
             }
-            Scheduler.MarkWoken(agentName);
         }
 
         /// <summary>Agent 运行结束，回到休眠</summary>

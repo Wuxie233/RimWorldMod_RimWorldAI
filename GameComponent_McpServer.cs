@@ -1,6 +1,5 @@
 using System;
 using RimWorld;
-using RimWorldMCP.AgentRuntime;
 using RimWorldMCP.Tools;
 using Verse;
 
@@ -71,7 +70,6 @@ namespace RimWorldMCP
             Tool_AdvanceTick.ProcessPending();
             Tool_AdvanceTick.LowSpeedTick();
             BridgeLifecycle.Tick();
-            AgentRuntimeTick();
             McpOssUploader.ProcessPendingUploads();
             McpCommandQueue.ProcessDeferredCleanup();
 
@@ -93,13 +91,6 @@ namespace RimWorldMCP
             // 刷新 Tool 注册表（游戏状态变化后重新创建 Tool 实例）
             McpServiceManager.RefreshTools();
 
-            // 初始化 Agent Runtime
-            var sessionDir = System.IO.Path.Combine(
-                System.IO.Path.GetDirectoryName(typeof(GameComponent_McpServer).Assembly.Location) ?? ".",
-                "claude-sessions", $"rimworld-{_sessionId}");
-            McpLog.Info($"[agent-runtime] sessionDir = {sessionDir}");
-            TaskBoard.SessionDir = sessionDir;
-
             McpLog.Info($"[session] ID = {_sessionId}");
 
             // 启动桥接器
@@ -120,108 +111,5 @@ namespace RimWorldMCP
             AutoOpenChat = true;
         }
 
-        /// <summary>每帧运行 Agent Runtime 调度逻辑。</summary>
-        private static void AgentRuntimeTick()
-        {
-            if (Find.CurrentMap == null) return;
-
-            // 更新 Colony Load Score
-            Scheduler.Tick();
-
-            // L3 事件立即唤醒: Combat / Medic
-            if (Harmony.NotificationBus.HighDangerPending && !AgentOrchestrator.IsCombatActive)
-            {
-                // 收集高危事件中的 Agent 路由
-                bool needsCombat = false, needsMedic = false;
-                var pending = Harmony.NotificationBus.Drain();
-                foreach (var n in pending)
-                {
-                    var route = Harmony.NotificationBus.GetEventAgent(n.Type, n.DangerLabel, n.Label);
-                    if (route == EventRoute.Combat) needsCombat = true;
-                    if (route == EventRoute.Medic) needsMedic = true;
-                    // 重新入队（Drain 已经取走了）
-                    Harmony.NotificationBus.Pending.Enqueue(n);
-                }
-
-                if (needsCombat && Find.TickManager != null && !Find.TickManager.Paused)
-                {
-                    Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
-                    McpLog.Info("[agent-runtime] L3 战斗事件 → 暂停游戏，唤醒 Combat Agent");
-                }
-
-                if (needsCombat)
-                {
-                    var config = AgentConfigs.Combat;
-                    McpLog.Info($"[agent-runtime] 立即唤醒 Combat (Load={Scheduler.LoadScore})");
-                    var prompt = ContextBuilder.Build(config);
-                    AgentOrchestrator.BeginAgent(config.Name);
-                    PushAgentStatus();
-                }
-                if (needsMedic)
-                {
-                    var config = AgentConfigs.Medic;
-                    McpLog.Info($"[agent-runtime] 立即唤醒 Medic (L3 医疗)");
-                    var prompt = ContextBuilder.Build(config);
-                    AgentOrchestrator.BeginAgent(config.Name);
-                    PushAgentStatus();
-                }
-
-                Harmony.NotificationBus.HighDangerPending = false;
-            }
-
-            // 检查每个 Agent 是否应该定时唤醒
-            foreach (var config in AgentConfigs.All)
-            {
-                if (config.Name == "combat") continue; // Combat 仅事件触发
-
-                // 休眠中才检查唤醒条件
-                if (!AgentOrchestrator.IsSleeping(config.Name)) continue;
-
-                bool shouldWake = false;
-
-                if (config.IntervalGameHours > 0 && Scheduler.ShouldWake(config.Name, config.IntervalGameHours))
-                    shouldWake = true;
-
-                if (config.TriggerDaily && AgentOrchestrator.IsNewDay(config.Name))
-                    shouldWake = true;
-
-                if (shouldWake)
-                {
-                    McpLog.Info($"[agent-runtime] 唤醒 {config.Name} (Load={Scheduler.LoadScore}, Mode={Scheduler.Mode})");
-                    var prompt = ContextBuilder.Build(config);
-                    McpLog.Info($"[agent-runtime] {config.Name} prompt 已构建 ({prompt.Length} 字符)");
-                    AgentOrchestrator.BeginAgent(config.Name);
-                    PushAgentStatus();
-                }
-            }
-
-            // Combat 兜底: 检测是否需要提示退出
-            if (AgentOrchestrator.IsCombatActive)
-            {
-                AgentOrchestrator.CombatRoundCount++;
-                int mapEnemies = 0;
-                foreach (var pawn in Find.CurrentMap.mapPawns.AllPawnsSpawned)
-                    if (pawn.Faction != null && pawn.Faction.HostileTo(Faction.OfPlayer) && !pawn.Downed)
-                        mapEnemies++;
-
-                if (AgentOrchestrator.CombatRoundCount >= AgentOrchestrator.CombatMaxRounds)
-                {
-                    McpLog.Warn("[agent-runtime] Combat 超时，强制退出");
-                    AgentOrchestrator.EndAgent("combat");
-                    PushAgentStatus();
-                }
-                else if (mapEnemies == 0 && AgentOrchestrator.CombatRoundCount >= AgentOrchestrator.CombatRemindRound)
-                {
-                    McpLog.Info($"[agent-runtime] 提示 Combat 退出 (Round {AgentOrchestrator.CombatRoundCount})");
-                }
-            }
-        }
-
-        private static void PushAgentStatus()
-        {
-            var role = AgentOrchestrator.AgentRoleDisplay;
-            McpLog.Info($"[agent-runtime] Agent 角色: {role}");
-            _ = CCClient.SendEventText("agent.status", "AgentRole", role);
-        }
     }
 }
