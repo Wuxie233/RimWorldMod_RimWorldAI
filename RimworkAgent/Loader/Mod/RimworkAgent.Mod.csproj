@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -11,10 +11,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <OutputPath>..\..\publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>..\..\..\publish\RimworkAgent\</OutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>..\..\publish\1.6\Assemblies\</OutputPath>
+    <OutputPath>..\..\..\publish\RimworkAgent\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
