@@ -1,4 +1,4 @@
-﻿# RimWorld AI
+# RimWorld AI
 
 AI Colony Operating System — 多 Agent 自主管理 RimWorld 殖民地。
 

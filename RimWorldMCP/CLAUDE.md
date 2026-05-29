@@ -2,31 +2,23 @@
 
 MCP (Model Context Protocol) 服务器，将 RimWorld 游戏状态和操作暴露为 LLM 可调用的 Tool。作为 RimWorld mod DLL 内嵌运行。
 
-**游戏源码**: `F:\RiderProjects\Assembly-CSharp\`（RimWorld 反编译 C# 源码，net472 Class Library）
-**Openclaw源码**: `D:\WebstormProjects\openclaw`（已弃用，CC 替代）
-**jetbrains-cc-gui源码 一个Claude Code 的IDEA插件**: `F:\IdeaProjects\jetbrains-cc-gui`（已弃用，CC 替代）
-**cc-companion/node_modules 项目中用到的NPM包**:
+- MCP Server: `../RimWorldMCP/`（游戏 Mod DLL，99+ Tool）
+- Agent Runtime: `../RimWorldAgent/`（独立 EXE/MOD，通过 MCP 协议通信）
+- MCP Shared: `../SimpleMspServer/`（JSON-RPC + Transport）
 
 ## 项目结构
 
 ```
 RimWorldMCP/
-├── design/                                # 技术设计文档（架构细节、实现模式、设计理由）
-│   └── camera-system.md                   # 摄像头自动移动系统完整设计
-├── RimWorldMCPMod.cs                      # Mod 入口：Mod 子类，管理设置窗口与生命周期
-├── McpModSettings.cs                      # Mod 设置数据模型（日志/监听/桥接器/OSS）
-├── McpLog.cs                              # 统一日志（按级别过滤，输出到 Verse.Log）
-├── GameComponent_McpServer.cs             # GameComponent 子类，管理桥接器与会话生命周期
-│   ├── McpServiceManager.cs               # MCP 服务全局单例（主菜单即启动，跨存档持续运行）
-├── McpCommandQueue.cs                     # 线程安全命令队列（ConcurrentQueue + TaskCompletionSource）
-├── Transport/                             # 传输层
-│   ├── ITransport.cs                      # 抽象接口
-│   ├── SseTransport.cs                    # GET /sse + POST /message（HttpListener 后台线程）
-│   ├── StreamableHttpTransport.cs         # POST /mcp（新版协议）
-│   └── StdioTransport.cs                  # stdin/stdout（保留，不在游戏内使用）
-├── Mcp/                                   # MCP 协议层
-│   ├── McpServer.cs                       # JSON-RPC 调度：initialize/tools/list/tools/call/resources
-│   └── McpMessage.cs                      # 数据类型：请求/响应/Tool定义/资源
+├── CLAUDE.md
+├── resource/                  ← MOD 元数据（构建时复制到根 publish）
+│   ├── About/About.xml
+│   └── Languages/
+├── Tools/                     ← 99 个游戏 Tool
+├── Mcp/                       ← MCP Server (JSON-RPC dispatch)
+├── Harmony/                   ← 事件拦截 (NotificationBus)
+├── Bridge/                    ← 空 stub (原 CC 桥接已迁至 Agent)
+├── Transport/                 ← SseTransport (HTTP + SSE)
 ├── Tools/                                 # 90+ 个 Tool（真实 RimWorld API 调用）
 │   ├── ITool.cs                           # Tool 接口 + ToolResult
 │   ├── ToolRegistry.cs                    # 注册表 + 执行调度 + 资源映射（反射自动注册）
