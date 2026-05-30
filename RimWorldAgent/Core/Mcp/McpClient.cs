@@ -135,7 +135,8 @@ namespace RimWorldAgent.Core.Mcp
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
-                    CoreLog.Error($"[McpClient] SSE 断开: {ex.Message}，3s 后重连");
+                    var detail = UnwrapException(ex);
+                    CoreLog.Error($"[McpClient] SSE 断开: {detail}，3s 后重连");
                     try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { break; }
                 }
             }
@@ -146,6 +147,18 @@ namespace RimWorldAgent.Core.Mcp
             StopSse();
             if (_sdkClient is IDisposable d) d.Dispose();
             _http.Dispose();
+        }
+
+        private static string UnwrapException(Exception ex)
+        {
+            var sb = new StringBuilder();
+            while (ex != null)
+            {
+                if (sb.Length > 0) sb.Append(" → ");
+                sb.Append($"{ex.GetType().Name}: {ex.Message}");
+                ex = ex.InnerException;
+            }
+            return sb.ToString();
         }
     }
 }
