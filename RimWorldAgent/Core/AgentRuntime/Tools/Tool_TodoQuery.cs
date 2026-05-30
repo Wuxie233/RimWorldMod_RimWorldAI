@@ -1,7 +1,9 @@
+using System;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.Data;
 
 namespace RimWorldAgent.Core.AgentRuntime.Tools
 {
@@ -21,19 +23,27 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
 
         public Task<(string result, bool exit)> ExecuteAsync(JsonElement? args)
         {
-            string? status = null;
-            if (args?.TryGetProperty("status", out var statusEl) == true)
-                status = statusEl.GetString();
-            var items = TodoManager.Query(status);
-            if (items.Count == 0)
-                return Task.FromResult((string.IsNullOrEmpty(status) ? "TODO 列表为空。" : $"没有状态为 [{status}] 的任务。", false));
-            var sb = new StringBuilder();
-            sb.AppendLine($"TODO 列表 ({items.Count} 项):");
-            sb.AppendLine("| ID | 优先级 | 状态 | 描述 |");
-            sb.AppendLine("|---|--------|------|------|");
-            foreach (var i in items)
-                sb.AppendLine($"| {i.Id} | {i.Priority} | {i.Status} | {i.Description} |");
-            return Task.FromResult((sb.ToString().TrimEnd(), false));
+            try
+            {
+                string? status = null;
+                if (args?.TryGetProperty("status", out var statusEl) == true)
+                    status = statusEl.GetString();
+                var items = TodoStore.Query(status);
+                if (items.Count == 0)
+                    return Task.FromResult((string.IsNullOrEmpty(status) ? "TODO 列表为空。" : $"没有状态为 [{status}] 的任务。", false));
+                var sb = new StringBuilder();
+                sb.AppendLine($"TODO 列表 ({items.Count} 项):");
+                sb.AppendLine("| ID | 优先级 | 状态 | 描述 |");
+                sb.AppendLine("|---|--------|------|------|");
+                foreach (var i in items)
+                    sb.AppendLine($"| {i.Id} | {i.Priority} | {i.Status} | {i.Description} |");
+                return Task.FromResult((sb.ToString().TrimEnd(), false));
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error($"[TOOL_ERROR] todo_query 异常: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return Task.FromResult(($"查询失败: {ex.Message}", false));
+            }
         }
     }
 }

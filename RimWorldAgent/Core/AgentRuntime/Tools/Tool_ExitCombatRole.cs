@@ -26,7 +26,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             var msg = string.IsNullOrEmpty(summary)
                 ? "战斗指挥官角色已退出，回到总督。"
                 : $"战斗指挥官已退出，回到总督。\n总结: {summary}";
-            return Task.FromResult((msg, true));
+            return Task.FromResult((msg, false));
         }
     }
 }

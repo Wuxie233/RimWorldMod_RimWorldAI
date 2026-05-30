@@ -28,7 +28,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             if (AgentOrchestrator.ActiveAgent == role)
                 return Task.FromResult(($"当前已是 {role} 角色，无需切换。", false));
             AgentOrchestrator.NextAgentRequest = role;
-            return Task.FromResult(($"正在切换到 {role}，当前会话将结束。", true));
+            return Task.FromResult(($"正在切换到 {role}，当前会话将结束。", false));
         }
     }
 }

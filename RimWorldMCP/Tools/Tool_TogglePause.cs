@@ -6,7 +6,7 @@ using Verse;
 
 namespace RimWorldMCP.Tools
 {
-    public class Tool_TogglePause : ITool
+    public class Tool_TogglePause : ITool, INoMapRequired
     {
         public string Name => "toggle_pause";
         public string Description => "切换暂停或设置游戏速度。传 speed 参数直接设速度，不传则切换暂停（恢复时默认 3 倍速）。";
@@ -35,6 +35,10 @@ namespace RimWorldMCP.Tools
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
+            // 加载期间主线程不可用，提前返回错误避免 DispatchAsync 超时
+            if (LongEventHandler.ForcePause)
+                return ToolResult.Error("游戏正在加载中，主线程暂时不可用，请稍后重试。");
+
             return await McpCommandQueue.DispatchAsync(() =>
             {
                 try
@@ -51,7 +55,10 @@ namespace RimWorldMCP.Tools
                             return ToolResult.Error($"无效速度值 '{key}'。可选: paused, normal, fast, superfast, ultrafast");
 
                         if (entry.speed == TimeSpeed.Paused)
-                            tm.CurTimeSpeed = TimeSpeed.Paused; // TogglePaused 会暂停
+                        {
+                            if (!tm.Paused)
+                                tm.TogglePaused();
+                        }
                         else
                         {
                             tm.CurTimeSpeed = entry.speed;

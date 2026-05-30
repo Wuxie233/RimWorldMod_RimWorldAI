@@ -3,8 +3,7 @@ using Verse;
 
 namespace RimWorldMCP.Harmony
 {
-    /// <summary>MCP 服务启动 Hook — 独立于游戏事件拦截</summary>
-    [StaticConstructorOnStartup]
+    /// <summary>MCP 服务不再在此启动，改为 GameComponent.StartedNewGame/LoadedGame 延迟启动，避免加载期间工具调用卡死</summary>
     public static class Hook_McpBootstrap
     {
         static Hook_McpBootstrap()

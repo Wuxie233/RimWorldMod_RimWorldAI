@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.Data;
 
 namespace RimWorldAgent.Core.AgentRuntime.Tools
 {
@@ -29,7 +30,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             var status = statusEl.GetString()!.ToLower();
             if (status != "pending" && status != "done" && status != "cancelled")
                 return Task.FromResult(($"无效状态: {status}。可选: pending, done, cancelled", false));
-            var found = TodoManager.UpdateStatus(id, status);
+            var found = TodoStore.UpdateStatus(id, status);
             return Task.FromResult((found ? $"任务 [{id}] 状态已更新为 {status}" : $"任务 [{id}] 不存在", false));
         }
     }

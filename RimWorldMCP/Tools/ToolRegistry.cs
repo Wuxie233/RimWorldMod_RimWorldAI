@@ -110,21 +110,41 @@ namespace RimWorldMCP.Tools
             {
                 try
                 {
-                    // 地图加载守卫（需要在主线程检查 Find.CurrentMap）
-                    if (!(tool is INoMapRequired))
+                    // 地图加载守卫（Find.CurrentMap 是简单字段读取，线程安全无需 DispatchAsync）
+                    if (!(tool is INoMapRequired) && Find.CurrentMap == null)
                     {
-                        var mapLoaded = await McpCommandQueue.DispatchAsync(() => Find.CurrentMap != null);
-                        if (!mapLoaded)
+                        return new ToolCallResult
                         {
-                            return new ToolCallResult
+                            Content = new List<ContentItem>
                             {
-                                Content = new List<ContentItem>
-                                {
-                                    new() { Type = "text", Text = "当前没有已加载的地图，请先加载游戏存档或开始新游戏。" }
-                                },
-                                IsError = true
-                            };
-                        }
+                                new() { Type = "text", Text = "当前没有已加载的地图，请先加载游戏存档或开始新游戏。" }
+                            },
+                            IsError = true
+                        };
+                    }
+
+                    // 游戏状态预检：在所有 DispatchAsync 之前拦截，防止主线程不可用时卡死
+                    if (Current.Game == null)
+                    {
+                        return new ToolCallResult
+                        {
+                            Content = new List<ContentItem>
+                            {
+                                new() { Type = "text", Text = "游戏未启动（当前在主菜单）。请先开始新游戏或加载存档。" }
+                            },
+                            IsError = true
+                        };
+                    }
+                    if (LongEventHandler.ForcePause)
+                    {
+                        return new ToolCallResult
+                        {
+                            Content = new List<ContentItem>
+                            {
+                                new() { Type = "text", Text = "游戏正在加载中，主线程暂时不可用，请稍后重试。" }
+                            },
+                            IsError = true
+                        };
                     }
 
                     // 自动移动视角 — 工具自身返回目标区域，开关打开则移动+自动缩放

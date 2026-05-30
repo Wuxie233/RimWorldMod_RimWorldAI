@@ -160,6 +160,33 @@ namespace RimWorldAgent.Core.AgentRuntime
             OnStatusChanged?.Invoke(AgentRoleDisplay);
         }
 
+        /// <summary>原地切换 Agent（不销毁 session）。返回新 Agent 的完整上下文。</summary>
+        public static async Task<string?> SwitchAgentInSession(string targetRole)
+        {
+            var currentAgent = ActiveAgent;
+            if (currentAgent == null || SessionMcp == null) return null;
+            if (currentAgent == targetRole) return null;
+
+            var config = AgentConfigs.Get(targetRole);
+            if (config == null) return null;
+
+            // 恢复游戏速度 + 清除阶段
+            if (PaceController != null)
+                await PaceController.EnsureResumed(SessionMcp);
+            ClearPhase();
+
+            // 切换角色状态
+            EndAgent(currentAgent);
+            BeginAgent(targetRole);
+
+            // 构建新 Agent 上下文
+            var ctx = new ContextBuilder(SessionMcp);
+            var prompt = await ctx.BuildAsync(config);
+
+            CoreLog.Info($"[SwitchAgent] {currentAgent} → {targetRole} ({prompt.Length} 字符)");
+            return prompt;
+        }
+
         public static bool HasPendingEvents(string agentName)
             => AgentEvents.TryGetValue(agentName, out var q) && !q.IsEmpty;
 

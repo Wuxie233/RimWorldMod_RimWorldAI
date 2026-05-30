@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using RimWorld;
+using RimWorldMCP;
 using Verse;
 
 namespace RimWorldMCP.Harmony
@@ -189,6 +190,19 @@ namespace RimWorldMCP.Harmony
             if (def == LetterDefOf.AcceptCreepJoiner) return "来人";
             return "通知";
         }
+
+        // ========== MCP 服务延迟启动：主菜单 UI 就绪后 ==========
+
+        [HarmonyPatch(typeof(UIRoot_Entry), "Init")]
+        public static class Patch_UIRoot_Entry_Init
+        {
+            static void Postfix()
+            {
+                McpServiceManager.Start();
+            }
+        }
+
+        // ========== 分类辅助 ==========
 
         private static string ClassifyMessage(MessageTypeDef def)
         {

@@ -62,6 +62,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         {
             if (_tools.TryGetValue(name, out var tool))
             {
+                CoreLog.Info($"[TOOL_CALL] InternalTool {name} args={args}");
                 var (result, exit) = await tool.ExecuteAsync(args);
                 if (exit) OnExitRequested?.Invoke();
                 return (result, exit);
@@ -85,11 +86,23 @@ namespace RimWorldAgent.Core.AgentRuntime
 
         async Task<ToolCallResult> IToolProvider.ExecuteAsync(string name, JsonElement? args)
         {
-            var (text, _) = await ExecuteInternalAsync(name, args);
-            return new ToolCallResult
+            try
             {
-                Content = new List<ContentItem> { new ContentItem { Type = "text", Text = text } }
-            };
+                var (text, _) = await ExecuteInternalAsync(name, args);
+                return new ToolCallResult
+                {
+                    Content = new List<ContentItem> { new ContentItem { Type = "text", Text = text } }
+                };
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error($"[TOOL_ERROR] InternalTool {name} 异常: {ex.GetType().Name}: {ex.Message}");
+                return new ToolCallResult
+                {
+                    IsError = true,
+                    Content = new List<ContentItem> { new ContentItem { Type = "text", Text = $"工具 {name} 执行异常: {ex.Message}" } }
+                };
+            }
         }
 
         List<ResourceDefinition> IToolProvider.GetResources() => new List<ResourceDefinition>();

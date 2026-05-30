@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.Data;
 
 namespace RimWorldAgent.Core.AgentRuntime.Tools
 {
@@ -23,7 +24,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             if (args == null || !args.Value.TryGetProperty("id", out var idEl) || string.IsNullOrWhiteSpace(idEl.GetString()))
                 return Task.FromResult(("任务 ID 不能为空。", false));
             var id = idEl.GetString()!;
-            var removed = TodoManager.Delete(id);
+            var removed = TodoStore.Delete(id);
             return Task.FromResult((removed ? $"已删除任务 [{id}]" : $"任务 [{id}] 不存在", false));
         }
     }

@@ -21,7 +21,7 @@ namespace RimWorldAgent
             CoreLog.OnInfo = msg => Console.WriteLine($"[Core] {msg}");
             CoreLog.OnError = msg => Console.Error.WriteLine($"[Core] {msg}");
 
-            var mcpUrl = "http://localhost:9878";
+            var mcpUrl = "http://localhost:9877";
             var modelName = "";
             var planSpeed = "paused";
             for (int i = 0; i < args.Length; i++)
@@ -155,7 +155,7 @@ namespace RimWorldAgent
             await AgentLoop.RunSessionAsync(config, prompt, mcp, ccbWs);
         }
 
-        /// <summary>运行 Agent 会话，结束后检查 switch_agent 请求并自动切换</summary>
+        /// <summary>运行 Agent 会话。switch_agent 由 ToolDispatcher 在 session 内原地处理。</summary>
         private static async Task RunAgentWithSwitchSupport(AgentConfig config, ContextBuilder ctx, McpClient mcp)
         {
             AgentOrchestrator.NextAgentRequest = null;
@@ -168,19 +168,6 @@ namespace RimWorldAgent
 
             AgentOrchestrator.EndAgent(config.Name);
             Console.WriteLine($"=== {config.Name} 休眠 ===");
-
-            // 检查 switch_agent 请求
-            var nextAgent = AgentOrchestrator.NextAgentRequest;
-            AgentOrchestrator.NextAgentRequest = null;
-            if (!string.IsNullOrEmpty(nextAgent) && AgentOrchestrator.IsSleeping(nextAgent))
-            {
-                var nextConfig = AgentConfigs.Get(nextAgent);
-                if (nextConfig != null)
-                {
-                    Console.WriteLine($"=== switch_agent → {nextAgent} ===");
-                    await RunAgentWithSwitchSupport(nextConfig, ctx, mcp);
-                }
-            }
         }
 
         private static string? FindCcbDir()

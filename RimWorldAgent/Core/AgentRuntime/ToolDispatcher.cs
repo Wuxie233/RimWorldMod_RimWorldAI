@@ -21,11 +21,33 @@ namespace RimWorldAgent.Core.AgentRuntime
             // 内部 Tool → 直接本地处理
             if (InternalToolRegistry.Instance.IsInternal(toolName))
             {
-                log($"工具调用: {toolName}");
-                var (result, shouldExit) = await InternalToolRegistry.Instance.ExecuteInternalAsync(toolName, input);
-                sw.Stop();
-                log($"工具完成: {toolName} 用时 {sw.ElapsedMilliseconds}ms");
-                await ccbWs.SendToolResult(toolId, result);
+                try
+                {
+                    log($"工具调用: {toolName}");
+                    var (result, shouldExit) = await InternalToolRegistry.Instance.ExecuteInternalAsync(toolName, input);
+                    sw.Stop();
+                    log($"工具完成: {toolName} 用时 {sw.ElapsedMilliseconds}ms");
+                    await ccbWs.SendToolResult(toolId, result);
+
+                    // 原地切换：工具正常返回后，构造新 Prompt 模拟用户发送
+                    if (!string.IsNullOrEmpty(AgentOrchestrator.NextAgentRequest))
+                    {
+                        var target = AgentOrchestrator.NextAgentRequest;
+                        AgentOrchestrator.NextAgentRequest = null;
+                        var context = await AgentOrchestrator.SwitchAgentInSession(target);
+                        if (context != null)
+                        {
+                            await ccbWs.SendChat(context);
+                            log($"原地切换 → {target}，Prompt 已发送 ({context.Length} 字符)");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    log($"工具失败: {toolName} 用时 {sw.ElapsedMilliseconds}ms — {ex.GetType().Name}: {ex.Message}");
+                    await ccbWs.SendToolResult(toolId, $"Error: {ex.Message}", true);
+                }
                 return;
             }
 

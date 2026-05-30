@@ -66,8 +66,8 @@ namespace RimWorldAgent.Core.CcbManager
 
         public async Task<bool> ConnectAsync(int timeoutMs = 10000)
         {
-            _shuttingDown = false;
             Disconnect();
+            _shuttingDown = false;
 
             try
             {
@@ -334,11 +334,12 @@ namespace RimWorldAgent.Core.CcbManager
         {
             if (!IsReady) return;
             var now = DateTime.UtcNow;
-
-            if ((now - _lastPing).TotalMilliseconds > PingIntervalMs)
+            var sinceLastPing = (now - _lastPing).TotalMilliseconds;
+            var sinceLastPong = _lastPong == DateTime.MinValue ? -1 : (now - _lastPong).TotalMilliseconds;
+            if (sinceLastPing > PingIntervalMs)
                 _ = SendPing();
 
-            if (_lastPong != DateTime.MinValue && (now - _lastPong).TotalMilliseconds > PongTimeoutMs)
+            if (_lastPong != DateTime.MinValue && sinceLastPong > PongTimeoutMs)
             {
                 CoreLog.Error("[CcbWS] pong 超时，断开连接（将自动重连）");
                 _state = CcbClientState.Disconnected;

@@ -2,79 +2,47 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using RimWorldAgent.Core.AgentRuntime;
+using RimWorldAgent.Core.Data;
 
 namespace RimWorldAgent
 {
     public enum BudgetStatus { Ok, Warning, Critical, Exceeded }
 
-    /// <summary>Token 消耗追踪器 — 按存档 + 按模型追踪，持久化到存档，同步写入全局汇总</summary>
+    /// <summary>Token 预算服务 — 预算检查 + 格式化。数据存储委托给 Core.Data.TokenStore。</summary>
     public static class TokenUsageTracker
     {
         /// <summary>Record() 完成后触发，通知外部（如 CCB 推送预算更新）</summary>
         public static event Action? OnUsageRecorded;
 
-        // 合计字段（兼容旧代码 + 存档持久化）
-        public static long TotalInputTokens;
-        public static long TotalOutputTokens;
-        public static long TotalCacheReadTokens;
-        public static long TotalCacheCreateTokens;
-        public static int TotalRequests;
-        public static int TotalToolSuccess;
-        public static int TotalToolFailure;
-        public static long TotalDurationMs;
+        // ===== 属性委托到 TokenStore =====
 
-        // 当前存档各模型用量（持久化到存档）
-        public static Dictionary<string, ModelUsageData> PerModelUsages = new Dictionary<string, ModelUsageData>();
+        public static string CurrentModel
+        {
+            get => TokenStore.CurrentModel;
+            set => TokenStore.CurrentModel = value;
+        }
 
-        // 当前会话模型名（从 SDK init 消息获取）
-        public static string CurrentModel = "";
+        public static long TotalInputTokens => TokenStore.TotalInputTokens;
+        public static long TotalOutputTokens => TokenStore.TotalOutputTokens;
+        public static long TotalCacheReadTokens => TokenStore.TotalCacheReadTokens;
+        public static long TotalCacheCreateTokens => TokenStore.TotalCacheCreateTokens;
+        public static long TotalAllTokens => TokenStore.TotalAllTokens;
+        public static int TotalRequests => TokenStore.TotalRequests;
+        public static int TotalToolSuccess => TokenStore.TotalToolSuccess;
+        public static int TotalToolFailure => TokenStore.TotalToolFailure;
+        public static long TotalDurationMs => TokenStore.TotalDurationMs;
 
-        public static long TotalAllTokens =>
-            TotalInputTokens + TotalOutputTokens + TotalCacheReadTokens + TotalCacheCreateTokens;
+        // ===== 记录（委托 TokenStore + 全局持久化 + 事件） =====
 
         public static void Record(string model, long inputTokens, long outputTokens,
             long cacheRead, long cacheCreate, long durationMs)
         {
-            // 更新合计
-            Interlocked.Add(ref TotalInputTokens, inputTokens);
-            Interlocked.Add(ref TotalOutputTokens, outputTokens);
-            Interlocked.Add(ref TotalCacheReadTokens, cacheRead);
-            Interlocked.Add(ref TotalCacheCreateTokens, cacheCreate);
-            Interlocked.Increment(ref TotalRequests);
-            Interlocked.Add(ref TotalDurationMs, durationMs);
+            TokenStore.Record(model, inputTokens, outputTokens, cacheRead, cacheCreate, durationMs);
 
-            // 更新当前模型名
-            if (!string.IsNullOrEmpty(model))
-                CurrentModel = model;
-
-            // 更新按模型统计
             var key = string.IsNullOrEmpty(model) ? "unknown" : model;
-            lock (PerModelUsages)
-            {
-                if (!PerModelUsages.TryGetValue(key, out var data))
-                {
-                    data = new ModelUsageData();
-                    PerModelUsages[key] = data;
-                }
-                data.InputTokens += inputTokens;
-                data.OutputTokens += outputTokens;
-                data.CacheReadTokens += cacheRead;
-                data.CacheCreateTokens += cacheCreate;
-                data.RequestCount++;
-            }
-
-            // 同步写入全局汇总
             GlobalModelUsageStore.Contribute(key, inputTokens, outputTokens, cacheRead, cacheCreate);
 
-            // 实时刷新 UI 预算状态（不等游戏事件推送）
-            RefreshBudgetDisplay();
-        }
-
-        /// <summary>Record() 后触发 OnUsageRecorded 事件，由 AgentLoop 推送到 CCB</summary>
-        private static void RefreshBudgetDisplay()
-        {
             try { OnUsageRecorded?.Invoke(); }
             catch (Exception ex) { CoreLog.Warn($"[TokenUsage] 推送预算更新失败: {ex.Message}"); }
         }
@@ -88,10 +56,7 @@ namespace RimWorldAgent
 
         public static void RecordToolResult(bool isError)
         {
-            if (isError)
-                Interlocked.Increment(ref TotalToolFailure);
-            else
-                Interlocked.Increment(ref TotalToolSuccess);
+            TokenStore.RecordToolResult(isError);
         }
 
         // ===== 预算检查 =====
@@ -138,18 +103,15 @@ namespace RimWorldAgent
             sb.AppendLine($"- 合计 Token: {totalTokens:N0}");
             sb.AppendLine($"- 工具调用: {TotalToolSuccess + TotalToolFailure} 次 (成功 {TotalToolSuccess}, 失败 {TotalToolFailure})");
 
-            // 按模型细分
-            lock (PerModelUsages)
+            var modelUsages = TokenStore.GetModelUsages();
+            if (modelUsages.Count > 0)
             {
-                if (PerModelUsages.Count > 0)
+                sb.AppendLine();
+                sb.AppendLine("### 按模型");
+                foreach (var kv in modelUsages.OrderByDescending(kv => kv.Value.TotalTokens))
                 {
-                    sb.AppendLine();
-                    sb.AppendLine("### 按模型");
-                    foreach (var kv in PerModelUsages.OrderByDescending(kv => kv.Value.TotalTokens))
-                    {
-                        var d = kv.Value;
-                        sb.AppendLine($"- **{kv.Key}**: 合计 {d.TotalTokens:N0} | 入 {d.InputTokens:N0} | 出 {d.OutputTokens:N0} | 缓存 {d.CacheReadTokens:N0} | {d.RequestCount} 次");
-                    }
+                    var d = kv.Value;
+                    sb.AppendLine($"- **{kv.Key}**: 合计 {d.TotalTokens:N0} | 入 {d.InputTokens:N0} | 出 {d.OutputTokens:N0} | 缓存 {d.CacheReadTokens:N0} | {d.RequestCount} 次");
                 }
             }
 

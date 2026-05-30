@@ -11,7 +11,7 @@ using Verse;
 
 namespace RimWorldMCP.Tools
 {
-    public class Tool_AdvanceTick : ITool
+    public class Tool_AdvanceTick : ITool, INoMapRequired
     {
         public string Name => "advance_tick";
         public string Description => "以最快速度推进游戏指定小时数后恢复原速度。1 游戏小时 = 2500 tick，最快约 0.6 秒。支持小数（如 0.5 = 半小时）。和平时期用 12 小时大步推进。";
@@ -209,6 +209,10 @@ namespace RimWorldMCP.Tools
             if (hours <= 0) return ToolResult.Error("hours 必须 > 0");
             if (hours > 24) return ToolResult.Error("hours 过大，单次最多 24 小时（1 天）");
             int ticks = (int)Math.Round(hours * 2500);
+
+            // 加载期间主线程不可用，提前返回错误避免 DispatchAsync 超时
+            if (LongEventHandler.ForcePause)
+                return ToolResult.Error("游戏正在加载中，主线程暂时不可用，请稍后重试。");
 
             var tcs = new TaskCompletionSource<ToolResult>();
 

@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using RimWorldAgent.Core.CcbManager;
+using RimWorldAgent.Core.Data;
 using RimWorldAgent.Core.Mcp;
 using RimWorldAgent;
 

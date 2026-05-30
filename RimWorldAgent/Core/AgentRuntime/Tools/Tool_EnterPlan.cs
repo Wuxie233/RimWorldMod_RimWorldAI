@@ -23,7 +23,10 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             AgentOrchestrator.EnterPlanPhase();
             var pace = AgentOrchestrator.PaceController;
             var mcp = AgentOrchestrator.SessionMcp;
-            if (pace != null && mcp != null) await pace.PauseForPlanning(mcp);
+            if (pace == null || mcp == null)
+                return ($"进入 Plan 阶段失败: {(pace == null ? "GamePaceController" : "McpClient")} 不可用，Agent 会话可能已结束", false);
+
+            await pace.PauseForPlanning(mcp);
             var planSpeed = GamePaceController.PlanSpeed;
             return ($"已进入 Plan 阶段，游戏速度: {planSpeed}。{reason}", false);
         }

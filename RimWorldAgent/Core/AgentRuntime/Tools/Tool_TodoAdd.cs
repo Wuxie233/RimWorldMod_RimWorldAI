@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.Data;
 
 namespace RimWorldAgent.Core.AgentRuntime.Tools
 {
@@ -27,7 +28,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             var priority = 3;
             if (args.Value.TryGetProperty("priority", out var p) && p.TryGetInt32(out var pv))
                 priority = pv;
-            var item = TodoManager.Add(desc, priority);
+            var item = TodoStore.Add(desc, priority);
             return Task.FromResult(($"已添加任务 [{item.Id}]: {item.Description} (优先级 {item.Priority})", false));
         }
     }

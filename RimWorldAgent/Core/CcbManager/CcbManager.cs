@@ -23,6 +23,8 @@ namespace RimWorldAgent.Core.CcbManager
         private IntPtr _jobHandle = IntPtr.Zero;
 
         public bool IsReady => _ready;
+        /// <summary>TickAndRestart 重启了 companion 进程时为 true，调用方检查后应清除</summary>
+        public bool WasRestarted { get; set; }
 
         public CcbManager(string companionDir, string sessionsDir, int ccbPort = 19999, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null)
         {
@@ -141,6 +143,7 @@ namespace RimWorldAgent.Core.CcbManager
                     CoreLog.Error($"[CcbManager] 进程异常退出 (code={exitCode})，重启...");
                 }
                 Stop();
+                WasRestarted = true;
                 return Start();
             }
             return true;

@@ -27,8 +27,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             try
             {
                 if (_isPaused) return;
-                _isPaused = true;
                 await CallTogglePause(mcp, PlanSpeed);
+                _isPaused = true;
                 CoreLog.Info($"[GamePace] Plan 阶段速度: {PlanSpeed}");
             }
             finally { _opLock.Release(); }
@@ -42,8 +42,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             try
             {
                 if (!_isPaused) return;
-                _isPaused = false;
                 await CallTogglePause(mcp, "superfast");
+                _isPaused = false;
                 CoreLog.Info("[GamePace] 已恢复游戏 (Act 阶段)");
             }
             finally { _opLock.Release(); }
@@ -62,8 +62,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             try
             {
                 if (!_isPaused) return;
-                _isPaused = false;
                 await CallTogglePause(mcp, "superfast");
+                _isPaused = false;
                 CoreLog.Info("[GamePace] 已恢复游戏 (EnsureResumed)");
             }
             finally { _opLock.Release(); }
@@ -80,6 +80,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             catch (Exception ex)
             {
                 CoreLog.Error($"[GamePace] toggle_pause({speed}) 失败: {ex.Message}");
+                throw;
             }
         }
 
