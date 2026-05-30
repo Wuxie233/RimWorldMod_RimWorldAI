@@ -231,7 +231,7 @@ namespace RimWorldAgent
                         colony = Find.World.info.name;
                 }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[AiChat] 读取殖民地名称失败: {ex.Message}"); }
 
             string dayInfo = "";
             try
@@ -247,7 +247,7 @@ namespace RimWorldAgent
                     dayInfo = $" · {year}年 {seasonName}第{dayOfQ}天";
                 }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[AiChat] 读取日期信息失败: {ex.Message}"); }
 
             string header = $"{colony}{dayInfo}";
             Text.Font = GameFont.Tiny;

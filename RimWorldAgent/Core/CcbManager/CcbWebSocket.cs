@@ -35,6 +35,13 @@ namespace RimWorldAgent.Core.CcbManager
         private readonly SemaphoreSlim _sendLock = new(1, 1);
         private readonly SemaphoreSlim _eventLock = new(1, 1);
 
+        /// <summary>Token 预算上限（0 = 无限制）</summary>
+        public long BudgetLimit { get; set; }
+        /// <summary>思考力度：low / medium / high</summary>
+        public string ThinkingEffort { get; set; } = "medium";
+        /// <summary>最大思考 Token 数（0 = 默认）</summary>
+        public int MaxThinkingTokens { get; set; }
+
         public CcbClientState State => _state;
         public bool IsConnected => _state >= CcbClientState.Connected;
         public bool IsReady => _state == CcbClientState.Ready;
@@ -105,7 +112,7 @@ namespace RimWorldAgent.Core.CcbManager
             _heartbeatTimer = null;
             _cts?.Cancel();
             _state = CcbClientState.Disconnected;
-            try { _ws?.Dispose(); } catch { }
+            try { _ws?.Dispose(); } catch (Exception ex) { CoreLog.Info($"[CcbWS] Dispose WebSocket 异常: {ex.Message}"); }
             _ws = null;
             _lastPing = DateTime.MinValue;
             _lastPong = DateTime.MinValue;
@@ -163,7 +170,6 @@ namespace RimWorldAgent.Core.CcbManager
 
         private async Task SendHello()
         {
-            var settings = RimWorldAgentMod.Instance?.Settings;
             await SendJson(new
             {
                 type = "hello",
@@ -171,15 +177,15 @@ namespace RimWorldAgent.Core.CcbManager
                 auth = new { token = _token },
                 budget = new
                 {
-                    limit = settings?.TokenBudgetLimit ?? 0,
+                    limit = BudgetLimit,
                     used = 0L,
                     action = "Block"
                 },
                 thinking = new
                 {
                     mode = "default",
-                    effort = settings?.CCBThinkingEffort ?? "medium",
-                    tokens = settings?.CCBMaxThinkingTokens ?? 0
+                    effort = ThinkingEffort,
+                    tokens = MaxThinkingTokens
                 }
             });
         }
@@ -211,7 +217,7 @@ namespace RimWorldAgent.Core.CcbManager
                     ProcessMessage(text);
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { CoreLog.Info("[CcbWS] 接收循环已取消"); }
             catch (WebSocketException ex) { CoreLog.Info($"[CcbWS] WS 断开: {ex.Message}"); }
             catch (Exception ex) { CoreLog.Error($"[CcbWS] 接收异常: {ex.Message}"); }
 
@@ -272,7 +278,7 @@ namespace RimWorldAgent.Core.CcbManager
                         break;
                 }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Warn($"[CcbWS] 消息解析失败: {json.Substring(0, Math.Min(200, json.Length))} — {ex.Message}"); }
         }
 
         private void ParseAssistantMessage(JsonElement root)
@@ -336,7 +342,7 @@ namespace RimWorldAgent.Core.CcbManager
             {
                 CoreLog.Error("[CcbWS] pong 超时，断开连接（将自动重连）");
                 _state = CcbClientState.Disconnected;
-                try { _ws?.CloseAsync(WebSocketCloseStatus.ProtocolError, "pong timeout", CancellationToken.None); } catch { }
+                try { _ws?.CloseAsync(WebSocketCloseStatus.ProtocolError, "pong timeout", CancellationToken.None); } catch (Exception ex) { CoreLog.Info($"[CcbWS] 关闭 WS 异常: {ex.Message}"); }
             }
         }
 
@@ -362,7 +368,7 @@ namespace RimWorldAgent.Core.CcbManager
                     await Task.Delay(delay);
                     if (_shuttingDown) break;
                     if (string.IsNullOrEmpty(_url)) break;
-                    try { await ConnectAsync(); } catch { }
+                    try { await ConnectAsync(); } catch (Exception ex) { CoreLog.Info($"[CcbWS] 重连尝试异常: {ex.Message}"); }
                     if (_state != CcbClientState.Disconnected) break;
                 }
             }

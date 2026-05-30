@@ -36,10 +36,10 @@ namespace RimWorldMCP.Tools
                         if (tool.GetTargetRange(doc.RootElement) != null)
                             s_cameraToolNames.Add(tool.Name);
                     }
-                    catch { }
+                    catch (Exception ex) { Log.Warning($"[ToolRegistry] 测试工具 GetTargetRange 失败 ({type.Name}): {ex.Message}"); }
                 }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[ToolRegistry] 反射扫描 Tool 失败: {ex.Message}"); }
         }
 
         /// <summary>获取所有支持自动移动视角的工具名称（已排序）</summary>

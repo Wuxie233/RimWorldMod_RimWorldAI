@@ -80,7 +80,12 @@ namespace RimWorldAgent
 
             // 连接 CCB WebSocket（事件转发 + Agent 对话共用）
             var ccbWsUrl = $"ws://{settings?.CCBRemoteHost ?? "127.0.0.1"}:{settings?.CCBRemotePort ?? 19999}";
-            _ccbWs = new CcbWebSocket(ccbWsUrl, settings?.CCBAuthToken ?? "");
+            _ccbWs = new CcbWebSocket(ccbWsUrl, settings?.CCBAuthToken ?? "")
+            {
+                BudgetLimit = settings?.TokenBudgetLimit ?? 0,
+                ThinkingEffort = settings?.CCBThinkingEffort ?? "medium",
+                MaxThinkingTokens = settings?.CCBMaxThinkingTokens ?? 0
+            };
             if (await _ccbWs.ConnectAsync())
             {
                 EventForwarder.SetCcbSocket(_ccbWs);
@@ -195,7 +200,7 @@ namespace RimWorldAgent
                 _ccbWs.OnToolUse -= OnSessionToolUse;
             }
 
-            try { MemoryManager.Append(config.Name, new MemoryEntry { Day = AgentOrchestrator.GameDay, Insight = $"Load={Scheduler.LoadScore}({Scheduler.Mode})", Type = "session" }); } catch { }
+            try { MemoryManager.Append(config.Name, new MemoryEntry { Day = AgentOrchestrator.GameDay, Insight = $"Load={Scheduler.LoadScore}({Scheduler.Mode})", Type = "session" }); } catch (Exception ex) { Log.Warning($"[agent-mod] 记忆写入失败: {ex.Message}"); }
         }
 
         private static SchedulerInput ParseToSchedulerInput(string text)

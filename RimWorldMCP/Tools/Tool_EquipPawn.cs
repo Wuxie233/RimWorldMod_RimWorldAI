@@ -61,8 +61,8 @@ namespace RimWorldMCP.Tools
                     {
                         var compQuality = thing.TryGetComp<CompQuality>();
                         if (compQuality != null) qualityStr = $"（品质: {compQuality.Quality.GetLabel()}）";
-                    }
-                    catch { }
+                        }
+                        catch (Exception ex) { Log.Warning($"[EquipPawn] 读取物品品质失败: {ex.Message}"); }
 
                     bool isWeapon = thing.def.IsWeapon || thing.HasComp<CompEquippable>();
                     if (isWeapon)

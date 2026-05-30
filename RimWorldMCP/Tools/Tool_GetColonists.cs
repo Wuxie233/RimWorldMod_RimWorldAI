@@ -224,7 +224,7 @@ namespace RimWorldMCP.Tools
                         if (priority > 0)
                             activePriorities.Add($"{wt.labelShort}:{priority}");
                     }
-                    catch (Exception) { }
+                    catch (Exception ex) { Log.Warning($"[GetColonists] 读取工作优先级失败: {ex.Message}"); }
                 }
 
                 var top = activePriorities.OrderBy(p => int.Parse(p.Split(':').Last())).Take(6);

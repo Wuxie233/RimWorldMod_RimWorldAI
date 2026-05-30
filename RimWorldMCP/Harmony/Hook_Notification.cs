@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
@@ -138,7 +139,7 @@ namespace RimWorldMCP.Harmony
                     if (pawns != null && pawns.Count > 0)
                         return pawns.Take(5).Select(p => p.Name.ToStringShort).ToList();
                 }
-                catch { }
+                catch (Exception ex) { Log.Warning($"[Hook_Notification] 读取 Alert 目标失败: {ex.Message}"); }
                 return null;
             }
         }

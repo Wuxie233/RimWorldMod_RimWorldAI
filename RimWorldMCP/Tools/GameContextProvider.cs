@@ -132,14 +132,14 @@ namespace RimWorldMCP
                     int completedCount = allProjects.Count(p => p.IsFinished);
                     sb.AppendLine($"- 已完成: {completedCount}项 / {allProjects.Count}项");
                 }
-                catch { }
+                catch (Exception ex) { Log.Warning($"[GameContext] 统计研究项目失败: {ex.Message}"); }
             }
 
             sb.AppendLine();
             sb.AppendLine("## 威胁与财富");
             if (map != null)
             {
-                try { sb.AppendLine($"- 殖民地财富: {map.wealthWatcher?.WealthTotal ?? 0f:N0}"); } catch { }
+                try { sb.AppendLine($"- 殖民地财富: {map.wealthWatcher?.WealthTotal ?? 0f:N0}"); } catch (Exception ex) { Log.Warning($"[GameContext] 读取财富失败: {ex.Message}"); }
                 try
                 {
                     var st = Find.Storyteller;
@@ -149,7 +149,7 @@ namespace RimWorldMCP
                         sb.AppendLine($"- 难度: {st.difficultyDef?.label ?? "?"} | 叙事者: {st.def?.label ?? "?"}");
                     }
                 }
-                catch { }
+                catch (Exception ex) { Log.Warning($"[GameContext] 读取难度信息失败: {ex.Message}"); }
             }
 
             sb.AppendLine();
@@ -174,7 +174,7 @@ namespace RimWorldMCP
                         sb.AppendLine($"- 季节: {sl}");
                     }
                 }
-                catch { }
+                catch (Exception ex) { Log.Warning($"[GameContext] 读取天气失败: {ex.Message}"); }
             }
 
             sb.AppendLine();
@@ -190,7 +190,7 @@ namespace RimWorldMCP
                         sb.AppendLine($"- [{prio}] {a.Label}");
                     }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[GameContext] 读取警报失败: {ex.Message}"); }
 
             sb.AppendLine();
             sb.AppendLine("## 当前工作单");
@@ -217,7 +217,7 @@ namespace RimWorldMCP
                     }
                     if (!hasBills) sb.AppendLine("- 暂无");
                 }
-                catch { }
+                catch (Exception ex) { Log.Warning($"[GameContext] 读取工作单失败: {ex.Message}"); }
             }
 
             return sb.ToString().TrimEnd();

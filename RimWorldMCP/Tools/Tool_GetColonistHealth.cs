@@ -200,7 +200,7 @@ namespace RimWorldMCP.Tools
             string bleedRate = h.BleedRate > 0.01f ? $" [流血: {h.BleedRate * 100:F0}%/天]" : "";
             string permanent = h.IsPermanent() ? " [永久]" : "";
             string immun = "";
-            try { if (h.TryGetComp<HediffComp_Immunizable>() != null) immun = " [发展中]"; } catch (Exception) { }
+            try { if (h.TryGetComp<HediffComp_Immunizable>() != null) immun = " [发展中]"; } catch (Exception ex) { Log.Warning($"[ColonistHealth] 检查免疫组件失败: {ex.Message}"); }
 
             return $"  - {h.Label}{bodyPart}{severity}{bleedRate}{permanent}{immun}";
         }

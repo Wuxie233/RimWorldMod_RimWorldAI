@@ -74,11 +74,11 @@ namespace SimpleMspServer
         private void Cleanup()
         {
             _cts?.Cancel();
-            try { _listener?.Stop(); _listener?.Close(); } catch { }
+            try { _listener?.Stop(); _listener?.Close(); } catch (Exception ex) { _log.Info($"清理 HttpListener 异常: {ex.Message}"); }
             _listener = null;
             foreach (var kv in _sessions)
             {
-                try { kv.Value.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { }
+                try { kv.Value.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch (Exception ex) { _log.Info($"清理 Session 异常: {ex.Message}"); }
             }
             _sessions.Clear();
             _cts?.Dispose();
@@ -128,7 +128,7 @@ namespace SimpleMspServer
             catch (Exception ex)
             {
                 _log.Error($"HTTP 处理错误: {ex.Message}");
-                try { res.StatusCode = 500; res.Close(); } catch { }
+                try { res.StatusCode = 500; res.Close(); } catch (Exception closeEx) { _log.Info($"关闭 HTTP 响应异常: {closeEx.Message}"); }
             }
         }
 
@@ -300,14 +300,14 @@ namespace SimpleMspServer
                     { Method = method, Params = System.Text.Json.Nodes.JsonNode.Parse(jsonParams) };
                     await Transport.SendMessageAsync(notification, _cts.Token);
                 }
-                catch (OperationCanceledException) { }
-                catch { }
+                catch (OperationCanceledException) { Console.Error.WriteLine("[McpSession] 发送通知已取消"); }
+                catch (Exception ex) { Console.Error.WriteLine($"[McpSession] 发送通知失败: {ex.Message}"); }
             }
 
             public async ValueTask DisposeAsync()
             {
                 _cts.Cancel();
-                try { await _runTask; } catch { }
+                try { await _runTask; } catch (Exception ex) { Console.Error.WriteLine($"[McpSession] 等待运行任务异常: {ex.Message}"); }
                 if (_server is IDisposable d) d.Dispose();
                 _cts.Dispose();
             }

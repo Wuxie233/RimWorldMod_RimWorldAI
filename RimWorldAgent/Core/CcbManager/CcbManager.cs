@@ -154,7 +154,7 @@ namespace RimWorldAgent.Core.CcbManager
             {
                 if (!_process.HasExited) { _process.Kill(); _process.WaitForExit(5000); }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 关闭子进程异常: {ex.Message}"); }
             finally
             {
                 _process.Dispose(); _process = null;
@@ -188,7 +188,7 @@ namespace RimWorldAgent.Core.CcbManager
                 }
             }
             catch (Exception ex) { CoreLog.Error($"[CcbManager] PID 清理失败: {ex.Message}"); }
-            finally { try { File.Delete(pidFile); } catch { } }
+            finally { try { File.Delete(pidFile); } catch (Exception ex) { CoreLog.Info($"[CcbManager] 删除 PID 文件失败: {ex.Message}"); } }
         }
 
         private static bool IsNodeProcess(Process proc)
@@ -196,7 +196,7 @@ namespace RimWorldAgent.Core.CcbManager
             var name = proc.ProcessName.ToLowerInvariant();
             if (name != "node" && name != "node.exe") return false;
             try { return (proc.MainModule?.FileName ?? "").IndexOf("node", StringComparison.OrdinalIgnoreCase) >= 0; }
-            catch { return false; }
+            catch { CoreLog.Info($"[CcbManager] 无法读取进程模块信息 PID={proc.Id}"); return false; }
         }
 
         // ========== Windows JobObject ==========

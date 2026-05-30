@@ -141,10 +141,8 @@ namespace RimWorldMCP.Tools
                             var cats = def.thingCategories.Select(c => c.label).ToArray();
                             sb.AppendLine($"- **thingCategories**: {string.Join(", ", cats)}");
                         }
-                    }
-                    catch { }
-
-                    // Apparel 特有
+                        }
+                        catch (Exception ex) { Log.Warning($"[GetThingDef] 读取分类失败: {ex.Message}"); }
                     if (def.IsApparel && def.apparel != null)
                     {
                         try
@@ -157,7 +155,7 @@ namespace RimWorldMCP.Tools
                             }
                             sb.AppendLine($"- **wearPerDay**: {def.apparel.wearPerDay:F2}");
                         }
-                        catch { }
+                        catch (Exception ex) { Log.Warning($"[GetThingDef] 读取衣物属性失败: {ex.Message}"); }
                     }
 
                     // Weapon 特有

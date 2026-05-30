@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.AgentRuntime;
 
 namespace RimWorldAgent
 {
@@ -127,7 +128,7 @@ namespace RimWorldAgent
                         foreach (var v in versions)
                         { node = TryFindNode(v); if (node != null) return node; }
                     }
-                    catch { }
+                    catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] nvm 目录扫描失败: {ex.Message}"); }
                 }
 
                 // 5. Common paths
@@ -170,7 +171,7 @@ namespace RimWorldAgent
                 using var proc = Process.Start(psi);
                 if (proc != null) { proc.WaitForExit(3000); if (proc.ExitCode == 0) return "npm"; }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] npm 探测失败: {ex.Message}"); }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -181,7 +182,7 @@ namespace RimWorldAgent
                     using var proc = Process.Start(psi);
                     if (proc != null) { proc.WaitForExit(3000); if (proc.ExitCode == 0) return "npm.cmd"; }
                 }
-                catch { }
+                catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] npm.cmd 探测失败: {ex.Message}"); }
             }
 
             return null;
@@ -215,7 +216,7 @@ namespace RimWorldAgent
                 var rootDir = RimWorldAgentMod.Instance?.Content?.RootDir;
                 if (!string.IsNullOrEmpty(rootDir)) return rootDir;
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] 读取 Mod RootDir 失败: {ex.Message}"); }
 
             try
             {
@@ -226,7 +227,7 @@ namespace RimWorldAgent
                     if (asmDir != null) return Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
                 }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] 读取 Assembly 路径失败: {ex.Message}"); }
             return null;
         }
 
@@ -239,7 +240,7 @@ namespace RimWorldAgent
                 using var proc = Process.Start(psi);
                 if (proc != null) { proc.WaitForExit(3000); if (proc.ExitCode == 0) return candidate; }
             }
-            catch { }
+            catch (Exception ex) { CoreLog.Info($"[CompanionInstaller] Node 探测失败 ({candidate}): {ex.Message}"); }
             return null;
         }
 

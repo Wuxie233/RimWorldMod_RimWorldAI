@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Verse;
 
 namespace RimWorldMCP.Tools
 {
@@ -80,7 +81,7 @@ namespace RimWorldMCP.Tools
                 if (!string.IsNullOrEmpty(rootDir))
                     return rootDir;
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[SubmitFeedback] 读取 Mod RootDir 失败: {ex.Message}"); }
 
             try
             {
@@ -92,7 +93,7 @@ namespace RimWorldMCP.Tools
                         return Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
                 }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[SubmitFeedback] 读取 Assembly 路径失败: {ex.Message}"); }
 
             return null;
         }

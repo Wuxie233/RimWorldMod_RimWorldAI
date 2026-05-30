@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using UnityEngine;
-using Verse;
+using RimWorldAgent.Core.AgentRuntime;
 
 namespace RimWorldAgent
 {
@@ -24,7 +23,7 @@ namespace RimWorldAgent
         private static Dictionary<string, ModelUsageData> _allModels = new Dictionary<string, ModelUsageData>();
 
         private static string FilePath => Path.Combine(
-            Application.persistentDataPath, "RimWorldMCP_ModelUsage.json");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RimWorldMCP", "RimWorldMCP_ModelUsage.json");
 
         public static Dictionary<string, ModelUsageData> AllModels
         {
@@ -95,7 +94,7 @@ namespace RimWorldAgent
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning($"[GlobalModelUsage] 保存失败: {ex.Message}");
+                    CoreLog.Warn($"[GlobalModelUsage] 保存失败: {ex.Message}");
                 }
             }
         }
@@ -115,7 +114,7 @@ namespace RimWorldAgent
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning($"[GlobalModelUsage] 加载失败: {ex.Message}");
+                    CoreLog.Warn($"[GlobalModelUsage] 加载失败: {ex.Message}");
                     _allModels = new Dictionary<string, ModelUsageData>();
                 }
             }

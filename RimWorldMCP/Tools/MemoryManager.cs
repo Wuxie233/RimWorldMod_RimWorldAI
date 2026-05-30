@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Verse;
 
 namespace RimWorldMCP.Tools
 {
@@ -36,7 +37,7 @@ namespace RimWorldMCP.Tools
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { Log.Warning($"[MemoryManager] 定位 Assembly 路径失败: {ex.Message}"); }
 
             _filePath = "memory.json";
             return _filePath;
