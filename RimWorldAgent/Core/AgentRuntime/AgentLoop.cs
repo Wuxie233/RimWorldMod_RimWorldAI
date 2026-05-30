@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using RimWorldAgent.Core.CcbManager;
 using RimWorldAgent.Core.Data;
@@ -104,15 +105,21 @@ namespace RimWorldAgent.Core.AgentRuntime
             AgentOrchestrator.SessionMcp = mcp;
 
             var tcs = new TaskCompletionSource<bool>();
+            var pendingTools = 0;
+            var resultReceived = false;
 
             void OnResult(string subtype, string? _)
             {
-                CoreLog.Info($"[{config.Name}] 回合结束: {subtype}");
-                tcs.TrySetResult(true);
+                CoreLog.Info($"[{config.Name}] 回合结束: {subtype} (pendingTools={Volatile.Read(ref pendingTools)})");
+                if (Volatile.Read(ref pendingTools) == 0)
+                    tcs.TrySetResult(true);
+                else
+                    Volatile.Write(ref resultReceived, true);
             }
 
             async void OnToolUse(string toolId, string toolName, JsonElement? input)
             {
+                Interlocked.Increment(ref pendingTools);
                 try
                 {
                     await ToolDispatcher.HandleAsync(ccbWs, mcp, toolId, toolName, input,
@@ -121,6 +128,11 @@ namespace RimWorldAgent.Core.AgentRuntime
                 catch (Exception ex)
                 {
                     CoreLog.Error($"[{config.Name}] Tool 执行异常: {ex.Message}");
+                }
+                finally
+                {
+                    if (Interlocked.Decrement(ref pendingTools) == 0 && resultReceived)
+                        tcs.TrySetResult(true);
                 }
             }
 
@@ -156,7 +168,9 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             try
             {
-                MemoryManager.Append(config.Name, new MemoryEntry
+                // 原地切换后 ActiveAgent 可能已变，用实际活跃 Agent 记录
+                var effectiveName = AgentOrchestrator.ActiveAgent ?? config.Name;
+                MemoryManager.Append(effectiveName, new MemoryEntry
                 {
                     Day = AgentOrchestrator.GameDay,
                     Insight = $"Load={Scheduler.LoadScore}({Scheduler.Mode})",

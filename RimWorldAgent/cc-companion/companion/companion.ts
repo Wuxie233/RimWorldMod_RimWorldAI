@@ -201,11 +201,17 @@ async function main(): Promise<void> {
       if (status.status === 'connected') {
         console.log(`[cc-companion] RimWorld 已连接: ${typeof status.client === 'string' ? status.client : status.client?.name || 'unknown'}`);
         if (disidleTimer) { clearTimeout(disidleTimer); disidleTimer = null; }
+        if (disidleInterval) { clearInterval(disidleInterval); disidleInterval = null; }
       } else if (status.status === 'disconnected') {
         console.log('[cc-companion] RimWorld 已断开');
         if (CONFIG.idleTimeout > 0) {
-          console.log(`[cc-companion] 启动 idle 计时器: ${CONFIG.idleTimeout / 1000}s 后自动退出`);
+          const deadline = Date.now() + CONFIG.idleTimeout;
+          disidleInterval = setInterval(() => {
+            const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+            console.log(`[cc-companion] 断线倒计时: ${remaining}s 后自动退出`);
+          }, 5000);
           disidleTimer = setTimeout(() => {
+            if (disidleInterval) { clearInterval(disidleInterval); disidleInterval = null; }
             console.log(`[cc-companion] 断开后 ${CONFIG.idleTimeout / 1000}s 无重连，自动退出`);
             shutdown();
           }, CONFIG.idleTimeout);
@@ -242,6 +248,7 @@ async function main(): Promise<void> {
 
   // 6. 断开超时（仅断开后倒计时，启动后一直等首次连接）
   let disidleTimer: ReturnType<typeof setTimeout> | null = null;
+  let disidleInterval: ReturnType<typeof setInterval> | null = null;
 
   // 7. PID 文件
   const pidFile = join(process.cwd(), '.pid');
@@ -252,6 +259,7 @@ async function main(): Promise<void> {
   function shutdown() {
     console.log('\n[cc-companion] 正在关闭...');
     if (disidleTimer) { clearTimeout(disidleTimer); disidleTimer = null; }
+    if (disidleInterval) { clearInterval(disidleInterval); disidleInterval = null; }
     try { unlinkSync(pidFile); } catch {}
     process.exit(0);
   }

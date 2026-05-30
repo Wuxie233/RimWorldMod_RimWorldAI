@@ -187,7 +187,7 @@ export function createResponseProcessor(
             const cacheRead = usage.cache_read_input_tokens ?? 0;
             const cacheCreate = usage.cache_creation_input_tokens ?? 0;
             const totalTokens = inputTokens + outputTokens;
-            const totalInput = inputTokens + cacheCreate + cacheRead;
+            const totalInput = inputTokens;
             const cacheHitRate = totalInput > 0 ? (cacheRead / totalInput * 100).toFixed(0) : '0';
             const durationSec = durationMs ? (durationMs / 1000).toFixed(1) : '?';
             const fmt = (v: number) => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : String(v);

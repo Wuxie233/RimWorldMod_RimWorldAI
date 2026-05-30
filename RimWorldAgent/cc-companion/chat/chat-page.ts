@@ -165,6 +165,19 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     font-family: var(--mono); white-space: nowrap;
   }
   .header-meta .meta-val { color: var(--text); font-weight: 500; }
+  /* Auto-scroll toggle */
+  .scroll-toggle {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px;
+    background: var(--surface); cursor: pointer;
+    font-size: 11px; color: var(--muted); user-select: none;
+  }
+  .scroll-toggle:hover { background: var(--hover); color: var(--text); }
+  .scroll-toggle .st-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); transition: background 0.2s;
+  }
+  .scroll-toggle.off .st-dot { background: var(--muted-subtle); }
   .hdr-budget {
     display: inline-flex; align-items: center; gap: 4px;
     font-family: var(--mono); font-size: 11px;
@@ -530,15 +543,15 @@ export function getChatPageHtml(config: ChatPageConfig): string {
 
   /* ===== New Messages Pill ===== */
   #new-msg-pill {
-    display: none; align-self: center;
-    padding: 5px 14px; font-size: 11px; cursor: pointer;
-    color: var(--muted); background: var(--card);
-    border: 1px solid var(--border-strong); border-radius: 20px;
-    margin: 2px auto; z-index: 10;
+    display: none; position: sticky; bottom: 12px;
+    padding: 6px 16px; font-size: 12px; cursor: pointer;
+    color: #fff; background: var(--blue);
+    border: none; border-radius: 20px;
+    z-index: 10; width: fit-content; margin: 0 auto;
     font-weight: 500; transition: all 0.15s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    box-shadow: 0 2px 12px rgba(53,112,214,0.3);
   }
-  #new-msg-pill:hover { border-color: var(--muted-subtle); color: var(--text); }
+  #new-msg-pill:hover { background: #2a5db5; }
 
   /* ===== Compose ===== */
   .compose {
@@ -673,6 +686,7 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     <div class="header-meta" id="header-meta">
       <span class="hdr-budget" id="hdr-budget">Token --</span>
       <span class="meta-item">Tools <span class="meta-val" id="meta-tools">0</span></span>
+      <span class="scroll-toggle" id="scroll-toggle" onclick="toggleAutoScroll()" title="自动滚动吸附"><span class="st-dot"></span> 吸附</span>
       <div class="think-dd" id="think-dd">
         <span class="dd-btn" id="think-label">💭 默认 ▾</span>
         <div class="dd-menu" id="think-menu">
@@ -710,8 +724,7 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     </div>
   </div>
 
-  <div id="messages"></div>
-  <button id="new-msg-pill" onclick="scrollToBottom()">↓ 回到底部</button>
+	  <div id="messages"><button id="new-msg-pill" onclick="scrollToBottom()">↓ 回到底部</button></div>
 
   <!-- Compose -->
   <div class="compose">
@@ -954,8 +967,6 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     if (label) label.textContent = '思考过程';
     var cursor = panel.querySelector('.th-cursor');
     if (cursor) cursor.style.display = 'none';
-    panel.classList.add('collapsed');
-  }
 
   function appendThinkingDelta(panel, delta) {
     if (!panel) return;
@@ -1707,6 +1718,7 @@ export function getChatPageHtml(config: ChatPageConfig): string {
 
   // ===== Auto-scroll =====
   var userScrolledUp = false;
+  var autoScrollEnabled = true;
   var scrollRaf = 0;
   var scrollEventTimer = 0;
   var SNAP_THRESHOLD = 50;   // 距底部 < 50px 视为已到底，恢复磁吸
@@ -1719,7 +1731,7 @@ export function getChatPageHtml(config: ChatPageConfig): string {
   }
 
   function scrollDeferred() {
-    if (userScrolledUp) return;
+    if (!autoScrollEnabled || userScrolledUp) return;
     if (scrollRaf) return;
     scrollRaf = requestAnimationFrame(function() {
       scrollRaf = 0;
@@ -1752,6 +1764,19 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     scrollNow();
   }
   window.scrollToBottom = scrollToBottom;
+  function toggleAutoScroll() {
+    autoScrollEnabled = !autoScrollEnabled;
+    var el = document.getElementById('scroll-toggle');
+    if (el) {
+      el.classList.toggle('off', !autoScrollEnabled);
+    }
+    if (autoScrollEnabled) {
+      userScrolledUp = false;
+      newMsgPill.style.display = 'none';
+      scrollDeferred();
+    }
+  }
+  window.toggleAutoScroll = toggleAutoScroll;
 
   // ===== History =====
   var loadingHistory = false;
