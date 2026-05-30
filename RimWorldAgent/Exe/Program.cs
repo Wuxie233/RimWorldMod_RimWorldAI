@@ -103,6 +103,9 @@ namespace RimWorldAgent
             {
                 while (!_cts.IsCancellationRequested)
                 {
+                    // CCB 崩溃/空闲退出后自动重启
+                    ccb?.TickAndRestart();
+
                     // 1. 获取世界状态 → 更新 Scheduler
                     try
                     {
