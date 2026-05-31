@@ -182,7 +182,7 @@ namespace RimWorldMCP.Tools
                         if (!string.IsNullOrEmpty(label))
                             result.Text = result.Text + $"\n\n[游戏速度: {label}]";
                     }
-                    catch (Exception ex) { Log.Warning($"[ToolRegistry] 获取游戏速度失败: {ex.Message}"); }
+                    catch (Exception ex) { McpLog.Warn($"[ToolRegistry] 获取游戏速度失败: {ex.Message}"); }
 
                     // 工具结束时补推剩余通知
                     try
@@ -193,7 +193,7 @@ namespace RimWorldMCP.Tools
                             return true;
                         });
                     }
-                    catch (Exception ex) { Log.Warning($"[ToolRegistry] 自动追踪事件调度失败: {ex.Message}"); }
+                    catch (Exception ex) { McpLog.Warn($"[ToolRegistry] 自动追踪事件调度失败: {ex.Message}"); }
 
                     return new ToolCallResult
                     {

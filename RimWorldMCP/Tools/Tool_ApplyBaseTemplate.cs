@@ -46,7 +46,7 @@ namespace RimWorldMCP.Tools
             if (args.Value.TryGetProperty("options", out var jOpt) && jOpt.ValueKind == JsonValueKind.String)
             {
                 try { options = JsonSerializer.Deserialize<JsonElement>(jOpt.GetString()!); }
-                catch (Exception ex) { Log.Warning($"[ApplyBaseTemplate] JSON 解析失败: {ex.Message}"); }
+                catch (Exception ex) { McpLog.Warn($"[ApplyBaseTemplate] JSON 解析失败: {ex.Message}"); }
             }
 
             return Task.FromResult(templateName switch

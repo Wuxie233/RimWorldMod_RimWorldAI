@@ -113,7 +113,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 });
             }
-            catch { return args.Value.GetRawText(); }
+            catch (Exception ex) { CoreLog.Info($"[InternalTools] JSON 序列化失败，回退到 GetRawText: {ex.Message}"); return args.Value.GetRawText(); }
         }
     }
 }

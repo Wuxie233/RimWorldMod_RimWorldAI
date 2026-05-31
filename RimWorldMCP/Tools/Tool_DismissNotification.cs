@@ -84,7 +84,7 @@ namespace RimWorldMCP.Tools
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning($"[dismiss_notification] 关闭信件 ID={let.ID} 失败: {ex.Message}");
+                    McpLog.Warn($"[dismiss_notification] 关闭信件 ID={let.ID} 失败: {ex.Message}");
                 }
             }
 

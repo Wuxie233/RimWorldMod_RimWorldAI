@@ -73,13 +73,16 @@ export function createWSServer(
     let authenticated = token ? false : true;
 
     ws.on('message', (data: Buffer) => {
+      let raw = '';
       try {
-        const msg = JSON.parse(data.toString()) as WsMessage;
+        raw = data.toString().trim();
+        if (!raw) return;
+        const msg = JSON.parse(raw) as WsMessage;
         handleMessage(ws, msg);
-      } catch {
-        // console.log 而非 console.warn：stderr → C# ErrorDataReceived 误报为错误
-        console.log(`[cc-companion] 无效 JSON: ${data.toString().substring(0, 200)}`);
-        sendJson(ws, { type: 'error', error: 'invalid json' });
+      } catch (e: any) {
+        const errDetail = e?.message || String(e);
+        console.log(`[cc-companion] WS 消息处理异常 raw=${raw.substring(0, 300)} err=${errDetail}`);
+        sendJson(ws, { type: 'error', error: `invalid message: ${errDetail}` });
       }
     });
 

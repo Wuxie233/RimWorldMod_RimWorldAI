@@ -98,7 +98,7 @@ namespace RimWorldMCP.Tools
                 });
                 SimpleMspServer.McpServiceHost.Instance?.SendEvent("game/deterioration", payload);
             }
-            catch (Exception ex) { Log.Warning($"[DeteriorationTracker] 推送腐坏警告失败: {ex.Message}"); }
+            catch (Exception ex) { McpLog.Warn($"[DeteriorationTracker] 推送腐坏警告失败: {ex.Message}"); }
 
             // 冷却期内不重复推送
             if (tick - _lastNotifiedTick < NotifyCooldownTicks)

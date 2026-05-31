@@ -57,8 +57,8 @@ namespace RimWorldMCP
             }
         }
 
-        /// <summary>调度同步操作到主线程执行，等待结果（超时 60 秒）</summary>
-        public static async Task<T> DispatchAsync<T>(Func<T> action, int timeoutMs = 60000)
+        /// <summary>调度同步操作到主线程执行，等待结果（超时 5 分钟，适应 advance_tick 等长耗时 Tool）</summary>
+        public static async Task<T> DispatchAsync<T>(Func<T> action, int timeoutMs = 300000)
         {
             var command = new McpCommand { Action = () => action() };
             _queue.Enqueue(command);

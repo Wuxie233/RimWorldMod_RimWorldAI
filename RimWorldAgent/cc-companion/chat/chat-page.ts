@@ -1019,10 +1019,11 @@ export function getChatPageHtml(config: ChatPageConfig): string {
     var used = data.used || 0;
     var cacheRead = data.cacheRead || 0;
     var totalInput = data.totalInput || 0;
+    var cacheCreate = data.cacheCreate || 0;
     var fmt = function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : String(v); };
     var cacheHtml = '';
-    if (totalInput + cacheRead > 0) {
-      var cachePct = Math.round(cacheRead / (totalInput + cacheRead) * 100);
+    if (totalInput + cacheRead + cacheCreate > 0) {
+      var cachePct = Math.round(cacheRead / (totalInput + cacheRead + cacheCreate) * 100);
       cacheHtml = ' <span class="cache-rate">缓存 ' + fmt(cacheRead) + '(' + cachePct + '%)</span>';
     }
     if (limit <= 0) {

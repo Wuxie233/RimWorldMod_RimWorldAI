@@ -51,12 +51,16 @@ namespace RimWorldAgent.Core.CcbManager
 
         /// <summary>收到 Claude 文本回复时触发</summary>
         public event Action<string>? OnAssistantText;
+        /// <summary>收到 Claude 思考内容时触发</summary>
+        public event Action<string>? OnAssistantThinking;
         /// <summary>收到 tool_use 请求时触发</summary>
         public event Action<string, string, JsonElement?>? OnToolUse;
         /// <summary>回合结束</summary>
         public event Action<string, string?>? OnResult;
         /// <summary>收到中断确认</summary>
         public event Action? OnAborted;
+        /// <summary>收到系统通知（中断摘要）</summary>
+        public event Action<string>? OnSystemNotification;
 
         public CcbWebSocket(string url = "ws://localhost:19999", string token = "")
         {
@@ -243,15 +247,19 @@ namespace RimWorldAgent.Core.CcbManager
                         break;
 
                     case "assistant":
-                    case "user":
-                        ParseAssistantMessage(root);
-                        CountToolResults(root);
+                        // 文本和思考已由 stream_event delta 逐字追加，此处仅需 tool_use 的完整 input
+                        ParseAssistantMessage(root, skipTextAndThinking: true);
+                        // usage 仅从此处提取（最终 assistant 消息含完整 input/output/cache 总数），
+                        // 跳过 stream_event 的 message_start，否则 input 和 cache_read 会被双重计数
                         ExtractUsageFromMessage(root);
+                        break;
+                    case "user":
+                        // 用户消息已在本地 OnUserMessage 显示，SDK echo 只提取 tool_result 计数
+                        CountToolResults(root);
                         break;
 
                     case "stream_event":
                         ParseStreamEvent(root);
-                        ExtractUsageFromStreamEvent(root);
                         break;
 
                     case "result":
@@ -262,6 +270,11 @@ namespace RimWorldAgent.Core.CcbManager
 
                     case "aborted":
                         OnAborted?.Invoke();
+                        break;
+
+                    case "system-notification":
+                        if (root.TryGetProperty("text", out var sysNoti))
+                            OnSystemNotification?.Invoke(sysNoti.GetString() ?? "");
                         break;
 
                     case "system":
@@ -283,7 +296,7 @@ namespace RimWorldAgent.Core.CcbManager
             catch (Exception ex) { CoreLog.Warn($"[CcbWS] 消息解析失败: {json.Substring(0, Math.Min(200, json.Length))} — {ex.Message}"); }
         }
 
-        private void ParseAssistantMessage(JsonElement root)
+        private void ParseAssistantMessage(JsonElement root, bool skipTextAndThinking = false)
         {
             if (!root.TryGetProperty("message", out var msg)) return;
             if (!msg.TryGetProperty("content", out var content)) return;
@@ -295,13 +308,22 @@ namespace RimWorldAgent.Core.CcbManager
                     if (!block.TryGetProperty("type", out var bt)) continue;
                     var blockType = bt.GetString();
                     if (blockType == "text")
-                        OnAssistantText?.Invoke(block.GetProperty("text").GetString() ?? "");
+                    {
+                        if (!skipTextAndThinking)
+                            OnAssistantText?.Invoke(block.GetProperty("text").GetString() ?? "");
+                    }
+                    else if (blockType == "thinking")
+                    {
+                        if (!skipTextAndThinking)
+                            OnAssistantThinking?.Invoke(block.GetProperty("thinking").GetString() ?? "");
+                    }
                     else if (blockType == "tool_use")
-                        OnToolUse?.Invoke(
-                            block.GetProperty("id").GetString() ?? "",
-                            block.GetProperty("name").GetString() ?? "",
-                            block.TryGetProperty("input", out var input) ? input : (JsonElement?)null
-                        );
+                    {
+                        var toolId = block.GetProperty("id").GetString() ?? "";
+                        var toolName = block.GetProperty("name").GetString() ?? "";
+                        var toolInput = block.TryGetProperty("input", out var input) ? input : (JsonElement?)null;
+                        OnToolUse?.Invoke(toolId, toolName, toolInput);
+                    }
                 }
             }
         }
@@ -312,12 +334,26 @@ namespace RimWorldAgent.Core.CcbManager
             if (!evt.TryGetProperty("type", out var et)) return;
             var eventType = et.GetString();
 
-            // stream_event 中提取 assistant delta text 和 tool_use
-            if (eventType == "content_block_delta" && evt.TryGetProperty("delta", out var delta))
+            if (eventType == "content_block_start")
             {
-                if (delta.TryGetProperty("type", out var dt) && dt.GetString() == "text_delta"
-                    && delta.TryGetProperty("text", out var txt))
+                // block 类型切换时发空串信号，ChatStateTypes 据此重置 _deltaAccum
+                if (evt.TryGetProperty("content_block", out var cb) && cb.TryGetProperty("type", out var cbt))
+                {
+                    var blockType = cbt.GetString();
+                    if (blockType == "thinking")
+                        OnAssistantThinking?.Invoke("");
+                    else if (blockType == "text")
+                        OnAssistantText?.Invoke("");
+                }
+            }
+            else if (eventType == "content_block_delta" && evt.TryGetProperty("delta", out var delta)
+                && delta.TryGetProperty("type", out var dt))
+            {
+                var deltaType = dt.GetString();
+                if (deltaType == "text_delta" && delta.TryGetProperty("text", out var txt))
                     OnAssistantText?.Invoke(txt.GetString() ?? "");
+                else if (deltaType == "thinking_delta" && delta.TryGetProperty("thinking", out var th))
+                    OnAssistantThinking?.Invoke(th.GetString() ?? "");
             }
             // content_block_start 的 tool_use 仅通知 name/id，不做执行
             // 实际执行由 ParseAssistantMessage 中完整的 assistant 消息驱动
@@ -393,23 +429,6 @@ namespace RimWorldAgent.Core.CcbManager
             long outp = u.TryGetProperty("output_tokens", out var ot) ? ot.GetInt64() : 0;
             long cr = u.TryGetProperty("cache_read_input_tokens", out var c) ? c.GetInt64() : 0;
             long cc = u.TryGetProperty("cache_creation_input_tokens", out var ct) ? ct.GetInt64() : 0;
-            if (inp > 0 || outp > 0) TokenUsageTracker.Record(TokenUsageTracker.CurrentModel, inp, outp, cr, cc, 0);
-        }
-
-        private static void ExtractUsageFromStreamEvent(JsonElement root)
-        {
-            if (!root.TryGetProperty("event", out var evt)) return;
-            if (!evt.TryGetProperty("type", out var et)) return;
-            var eventType = et.GetString();
-            JsonElement src = default;
-            if (eventType == "message_start" && evt.TryGetProperty("message", out src)) { }
-            else if (eventType == "message_delta" && evt.TryGetProperty("usage", out src)) { }
-            else return;
-            if (src.ValueKind != JsonValueKind.Object) return;
-            long inp = src.TryGetProperty("input_tokens", out var it) ? it.GetInt64() : 0;
-            long outp = src.TryGetProperty("output_tokens", out var ot) ? ot.GetInt64() : 0;
-            long cr = src.TryGetProperty("cache_read_input_tokens", out var c) ? c.GetInt64() : 0;
-            long cc = src.TryGetProperty("cache_creation_input_tokens", out var ct) ? ct.GetInt64() : 0;
             if (inp > 0 || outp > 0) TokenUsageTracker.Record(TokenUsageTracker.CurrentModel, inp, outp, cr, cc, 0);
         }
 

@@ -102,13 +102,8 @@ async function main(): Promise<void> {
     if (effort) RuntimeState.thinkingEffort = effort;
     if (tokens) RuntimeState.maxThinkingTokens = tokens;
 
-    if (mode === 'disabled') {
-      queryIterator.setMaxThinkingTokens?.(0);
-    } else if (mode === 'fixed') {
-      queryIterator.setMaxThinkingTokens?.(tokens || 8000);
-    } else {
-      startNewSession();
-    }
+    // 重建会话以应用新的 thinking 配置（不再使用已弃用的 setMaxThinkingTokens）
+    startNewSession();
   }
 
   function startNewSession() {
@@ -143,6 +138,12 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Game Bus：中断通知 → 广播为系统消息
+      if (wsMessage.event === 'agent.interrupt' && text) {
+        bus.publishSystemNotification(text);
+        return;
+      }
+
       // Game Bus：回显用户发言到所有 UI 客户端（不经 SDK，零延迟）
       if (text) {
         bus.publishUserMessage(text);
@@ -164,6 +165,7 @@ async function main(): Promise<void> {
           RuntimeState.tokenBudgetAction,
           (payload.cacheRead as number) || 0,
           (payload.totalInput as number) || 0,
+          (payload.cacheCreate as number) || 0,
         );
         return;
       }

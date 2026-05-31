@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.AgentRuntime;
 using RimWorldAgent.Core.CcbManager;
 using Verse;
 
@@ -70,56 +70,138 @@ namespace RimWorldAgent
                 batch = new List<Action>(_pendingEvents);
                 _pendingEvents.Clear();
             }
-            foreach (var act in batch)
+            for (int i = 0; i < batch.Count; i++)
             {
-                try { act(); }
-                catch (Exception ex) { Log.Warning($"[ChatDisplayState] 事件处理异常: {ex.Message}"); }
+                try { batch[i](); }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn($"[ChatDisplayState] 事件处理异常 idx={i}/{batch.Count} action={batch[i].Method.Name} target={batch[i].Target?.GetType().Name}: {ex.GetType().Name}: {ex.Message}");
+                }
             }
         }
 
         public static List<ChatEntry> Snapshot { get { lock (_lock) return _entries.ToList(); } }
         public static List<ToolCallInfo> ToolCallsSnapshot { get { lock (_lock) return _toolCalls.ToList(); } }
 
-        public static void AddSystemMessage(string text) { lock (_lock) { _entries.Add(new ChatEntry { Role = ChatRole.Assistant, Text = text, State = ChatState.Done }); } OnChanged?.Invoke(); }
-        public static void OnUserMessage(string text) { lock (_lock) { _entries.Add(new ChatEntry { Role = ChatRole.User, Text = text, State = ChatState.Done }); } OnChanged?.Invoke(); }
+        public static void AddSystemMessage(string text) { lock (_lock) { _entries.Add(new ChatEntry { Role = ChatRole.Assistant, Text = text, State = ChatState.Done, IsContext = true }); } OnChanged?.Invoke(); }
+
+        /// <summary>用户发送消息时记录，结束上一轮 AI 流式条目</summary>
+        public static void OnUserMessage(string text)
+        {
+            lock (_lock)
+            {
+                FinalizeStreamingLocked();
+                _entries.Add(new ChatEntry { Role = ChatRole.User, Text = text, State = ChatState.Done });
+            }
+            _deltaAccum = "";
+            OnChanged?.Invoke();
+        }
 
         public static void MarkLastAborted()
         {
             lock (_lock)
             {
-                if (_entries.Count > 0 && _entries[_entries.Count - 1].State == ChatState.Streaming)
-                    _entries[_entries.Count - 1].State = ChatState.Error;
+                if (_streamingEntry != null)
+                {
+                    _streamingEntry.State = ChatState.Done;
+                    if (string.IsNullOrEmpty(_streamingEntry.Text))
+                        _streamingEntry.Text = "（已中断）";
+                    _streamingEntry.CachedHeight = 0f;
+                    _streamingEntry = null;
+                }
             }
+            _deltaAccum = "";
             OnChanged?.Invoke();
         }
 
         public static void Clear()
         {
-            lock (_lock) { _entries.Clear(); _toolCalls.Clear(); }
+            lock (_lock) { _entries.Clear(); _toolCalls.Clear(); _streamingEntry = null; }
+            _deltaAccum = "";
             OnChanged?.Invoke();
         }
 
         // ===== 从 CcbWebSocket 事件填充 =====
 
-        /// <summary>流式文本追加（AI 思考/正文），自动创建或追加 Streaming 条目</summary>
+        // 增量累积器：stream_event delta 逐片到达，累积后用 REPLACE 语义写入当前条目
+        // content_block_start 发空串信号 → 结束上一条流式，创建新条目
+        private static string _deltaAccum = "";
+        private static bool _deltaIsThinking;
+        private static ChatEntry? _streamingEntry;
+
+        /// <summary>流式文本 delta — 累积后替换。空串信号 = 新 text block 开始，创建新条目</summary>
         public static void OnAssistantText(string text)
         {
-            if (string.IsNullOrEmpty(text)) return;
             lock (_lock)
             {
-                var last = _entries.Count > 0 ? _entries[_entries.Count - 1] : null;
-                if (last == null || last.State != ChatState.Streaming || last.Role != ChatRole.Assistant)
+                if (string.IsNullOrEmpty(text))
                 {
-                    last = new ChatEntry { Role = ChatRole.Assistant, State = ChatState.Streaming };
-                    _entries.Add(last);
+                    // content_block_start{text} → 结束上一条流式，新建条目
+                    _deltaIsThinking = false;
+                    _deltaAccum = "";
+                    FinalizeStreamingLocked();
+                    _streamingEntry = new ChatEntry { Role = ChatRole.Assistant, State = ChatState.Streaming };
+                    _entries.Add(_streamingEntry);
                 }
-                last.Text += text;
+                else
+                {
+                    if (_deltaIsThinking) { _deltaIsThinking = false; _deltaAccum = ""; }
+                    _deltaAccum += text;
+                    if (_streamingEntry == null || _streamingEntry.State != ChatState.Streaming)
+                    {
+                        _streamingEntry = new ChatEntry { Role = ChatRole.Assistant, State = ChatState.Streaming };
+                        _entries.Add(_streamingEntry);
+                    }
+                    _streamingEntry.Text = _deltaAccum;
+                    _streamingEntry.ThinkingText = "";
+                    _streamingEntry.CachedHeight = 0f;
+                }
             }
             OnChanged?.Invoke();
         }
 
+        /// <summary>流式思考 delta — 累积后替换。空串信号 = 新 thinking block 开始，创建新条目</summary>
+        public static void OnAssistantThinking(string thinking)
+        {
+            lock (_lock)
+            {
+                if (string.IsNullOrEmpty(thinking))
+                {
+                    // content_block_start{thinking} → 结束上一条流式，新建条目
+                    _deltaIsThinking = true;
+                    _deltaAccum = "";
+                    FinalizeStreamingLocked();
+                    _streamingEntry = new ChatEntry { Role = ChatRole.Assistant, State = ChatState.Streaming };
+                    _entries.Add(_streamingEntry);
+                }
+                else
+                {
+                    if (!_deltaIsThinking) { _deltaIsThinking = true; _deltaAccum = ""; }
+                    _deltaAccum += thinking;
+                    if (_streamingEntry == null || _streamingEntry.State != ChatState.Streaming)
+                    {
+                        _streamingEntry = new ChatEntry { Role = ChatRole.Assistant, State = ChatState.Streaming };
+                        _entries.Add(_streamingEntry);
+                    }
+                    _streamingEntry.ThinkingText = _deltaAccum;
+                    _streamingEntry.CachedHeight = 0f;
+                }
+            }
+            OnChanged?.Invoke();
+        }
+
+        private static void FinalizeStreamingLocked()
+        {
+            if (_streamingEntry != null)
+            {
+                _streamingEntry.State = ChatState.Done;
+                _streamingEntry.CachedHeight = 0f;
+                _streamingEntry = null;
+            }
+        }
+
         /// <summary>工具开始执行</summary>
-        public static void AddToolCall(string toolId, string toolName, JsonElement? input)
+        public static void AddToolCall(string toolId, string toolName, string meta)
         {
             lock (_toolCalls)
             {
@@ -127,7 +209,7 @@ namespace RimWorldAgent
                 {
                     ItemId = toolId,
                     Name = toolName.Replace("mcp__agent__", "").Replace("mcp__rimworld__", ""),
-                    Meta = input?.ToString() ?? "",
+                    Meta = meta,
                     Status = ToolStatus.Running,
                 });
             }
@@ -152,14 +234,11 @@ namespace RimWorldAgent
             OnChanged?.Invoke();
         }
 
-        /// <summary>流式结束，最后一条 Streaming → Done</summary>
+        /// <summary>流式结束（result 消息触发），最后一条 Streaming → Done</summary>
         public static void FinishStreaming()
         {
-            lock (_lock)
-            {
-                if (_entries.Count > 0 && _entries[_entries.Count - 1].State == ChatState.Streaming)
-                    _entries[_entries.Count - 1].State = ChatState.Done;
-            }
+            lock (_lock) { FinalizeStreamingLocked(); }
+            _deltaAccum = "";
             OnChanged?.Invoke();
         }
     }

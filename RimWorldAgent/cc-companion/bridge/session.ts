@@ -80,7 +80,7 @@ export function createSession(sdk: any, config: CompanionConfig, abortController
     abortController,
     permissionMode: 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
-    disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'EnterWorktree', 'ExitWorktree', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'Skill'],
+    disallowedTools: ['Bash', 'FileWrite', 'FileEdit', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'NotebookEdit', 'WebFetch', 'EnterWorktree', 'ExitWorktree', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'Skill'],
     autoCompactEnabled: true,
     includePartialMessages: true,
     settingSources: config.settingSources,
@@ -97,8 +97,8 @@ export function createSession(sdk: any, config: CompanionConfig, abortController
   if (tm === 'disabled') {
     (options as any).thinking = { type: 'disabled' };
   } else if (tm === 'adaptive') {
-    (options as any).thinking = { type: 'enabled', budgetTokens: 10000 };
-    (options as any).effort = RuntimeState.thinkingEffort || 'medium';
+    (options as any).thinking = { type: 'adaptive' };
+    if (RuntimeState.thinkingEffort) (options as any).effort = RuntimeState.thinkingEffort;
   } else if (tm === 'fixed') {
     (options as any).thinking = { type: 'enabled', budgetTokens: RuntimeState.maxThinkingTokens || 8000 };
     if (RuntimeState.thinkingEffort) (options as any).effort = RuntimeState.thinkingEffort;

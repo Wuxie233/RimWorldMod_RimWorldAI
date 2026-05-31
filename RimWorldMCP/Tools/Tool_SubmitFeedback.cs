@@ -83,7 +83,7 @@ namespace RimWorldMCP.Tools
                 if (!string.IsNullOrEmpty(rootDir))
                     return rootDir;
             }
-            catch (Exception ex) { Log.Warning($"[SubmitFeedback] 读取 Mod RootDir 失败: {ex.Message}"); }
+            catch (Exception ex) { McpLog.Warn($"[SubmitFeedback] 读取 Mod RootDir 失败: {ex.Message}"); }
 
             try
             {
@@ -95,7 +95,7 @@ namespace RimWorldMCP.Tools
                         return Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
                 }
             }
-            catch (Exception ex) { Log.Warning($"[SubmitFeedback] 读取 Assembly 路径失败: {ex.Message}"); }
+            catch (Exception ex) { McpLog.Warn($"[SubmitFeedback] 读取 Assembly 路径失败: {ex.Message}"); }
 
             return null;
         }

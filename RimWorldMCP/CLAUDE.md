@@ -413,8 +413,10 @@ Skill 是领域知识文件（Markdown + YAML frontmatter），存放在 `Skills
 
 ## 开发
 
+> **通用规范**（异常处理、日志安全、设计文档、提交规范）见 [../CLAUDE.md](../CLAUDE.md)。
+
 - net472，仅 `System.Text.Json` NuGet 依赖
-- 日志输出到 `Console.Error`（Transport 层）和 `Verse.Log`（GameComponent 层）
+- 后台线程日志必须通过 `McpLog`（线程安全 `ConcurrentQueue` → 主线程 `Flush`）
 - Tool 返回值：`ToolResult` → `McpServer` 包装为 `{"content":[{"type":"text","text":"..."}]}`
 - 写操作必须通过 `McpCommandQueue` 调度到主线程
 - `dotnet build` → `publish/1.6/Assemblies/RimWorldMCP.dll`
@@ -430,53 +432,7 @@ Skill 是领域知识文件（Markdown + YAML frontmatter），存放在 `Skills
 - 分页工具在中文名称后标注（分页）
 - 工具名称应语义自包含：LLM 看到名称即知工具用途
 
-### 开发规范
-
-**0. 异常处理必须记录详细信息**
-
-**任何时候捕获异常都不允许忽略（空 catch / 空 catch(Exception) / `// ignored` 注释）。每个 catch 必须：**
-- 输出日志，包含异常类型名称、原始报错信息 `ex.Message`
-- 使用 `CoreLog`（MCP 侧）/ `Log.Warning` 或 `Log.Error`（Verse 侧）/ `_log`（SimpleMspServer 侧）等合适的日志出口
-- 格式：`$"[组件标识] 操作描述失败: {ex.GetType().Name}: {ex.Message}"`
-- 涉及外部调用（HTTP、WebSocket、文件 I/O、进程管理）时额外展开 `InnerException` 链
-
-**正确示例：**
-```csharp
-// 简单操作
-catch (Exception ex) { Log.Warning($"[ToolName] 读取数据失败: {ex.Message}"); }
-
-// 外部调用 — 展开完整链
-catch (Exception ex) when (!ct.IsCancellationRequested)
-{
-    var detail = UnwrapException(ex);
-    CoreLog.Error($"[McpClient] SSE 断开: {detail}");
-}
-
-static string UnwrapException(Exception ex)
-{
-    var sb = new StringBuilder();
-    while (ex != null)
-    {
-        if (sb.Length > 0) sb.Append(" → ");
-        sb.Append($"{ex.GetType().Name}: {ex.Message}");
-        ex = ex.InnerException;
-    }
-    return sb.ToString();
-}
-```
-
-**错误示例：**
-```csharp
-try { DoSomething(); } catch { }                 // 禁止
-try { DoSomething(); } catch (Exception) { }      // 禁止
-catch { /* ignored */ }                            // 禁止
-catch (Exception) { /* ignored */ }                // 禁止
-```
-
-**允许的精简场景（仍需记录）**：
-- `OperationCanceledException` — 异步取消，保留 `catch (OperationCanceledException) { }`，日志可选
-
----
+### Tool 开发规范
 
 **1. 新增 Tool 先查游戏源码**
 
@@ -491,58 +447,17 @@ catch (Exception) { /* ignored */ }                // 禁止
 **3. 所有 Tool 必须实现 GetTargetRange**
 
 所有 Tool 必须 override `GetTargetRange(JsonElement? args)` 返回摄像头目标矩形，使 AI 调用工具时画面自动移动到操作目标。
-
-**坐标类**：从 `args` 提取 `pos_x`/`pos_y`，有 `end_x`/`end_y` 的返回完整矩形并集（各自独立回退，`Math.Min`/`Math.Max` 归一化），只有单点的返回退化矩形 `(x, y, x, y)`。
-
-**ID 类**：通过 `CameraHelper.FindPawnById(map, id)` / `FindThingById(map, id)` 查找实体位置。单实体返回退化矩形，多实体返回双方位置的并集。
-
-**信息查询/全局操作/元操作**：返回 `null`（无位置概念，无需移动摄像头）。
-
-非坐标非 ID 类 Tool 返回 `null`。`Tool_MoveCamera` 也返回 `null`（自己处理移动）。
-
-详细实现模式见 `design/camera-system.md`。
-
-**视角缩放规则**：默认 1x 缩放（最近距离），仅在目标区域超出 1x 视野时才拉远（上限 40 格）。详见 `design/camera-system.md`。
+详见 `design/camera-system.md`。
 
 **4. 用 thingIDNumber 精确定位 Pawn/物品**
 
-所有涉及殖民者（Pawn）或物品（Thing）的操作，参数统一使用 `thingIDNumber`（int）而非名称字符串匹配。名称有重名、翻译、截断风险，ID 唯一且稳定。
-- 殖民者：`PawnsFinder.AllMaps_FreeColonistsSpawned.FirstOrDefault(c => c.thingIDNumber == id)`
-- 目标/物品：`map.mapPawns.AllPawnsSpawned.FirstOrDefault(p => p.thingIDNumber == id)` 或 `map.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == id)`
-- 工具之间传递引用时优先输出 `thingIDNumber`，让 LLM 在后续调用中精确回传
-- 参考实现：`Tool_ArrestPawn.cs`、`Tool_AttackPawn.cs`、`Tool_EquipPawn.cs`
+所有涉及殖民者（Pawn）或物品（Thing）的操作，参数统一使用 `thingIDNumber`（int）而非名称字符串匹配。
 
 **5. 关注 LLM 缓存命中率**
 
-Tool 的返回内容直接影响 prompt caching 的存活时间。大段返回会挤掉上下文中缓存的 system prompt，导致下次请求 cache miss，重新计费。
-
-- **List 工具必须分页**：数据量可能超过 20 条的工具，提供 `page`/`page_size` 参数，默认每页 10。AI 按需翻页，不是一次性灌入
-- **精简输出格式**：用表格而非段落，省略无意义的装饰文本。只输出 AI 决策必需的信息
-- **查询类工具设计为「按需获取」**：如 `get_colonists` 返回摘要列表（名称+ID+心情），详细信息（健康/需求）由单独工具按 ID 查询
-- **避免在结果中重复描述 Tool 自身的用法**：AI 已从 InputSchema 知道参数含义
-- **价格判断**：一次 cache miss 相当于几千 token 的额外开销。如果一个 Tool 返回 2000 token，每次调用都可能触发 cache eviction，比翻 10 页（每页 200 token）的总成本更高
-
-**6. 技术设计文档必须写入 design/ 目录**
-
-凡是涉及架构决策、实现模式、多个文件协同配合的技术细节，必须在 `design/` 目录中建立对应的 `.md` 文件进行描述。修改了相关代码后，必须同步更新设计文档和 CLAUDE.md 中的对应描述。
-
-- 设计文档聚焦 **WHY**（设计理由）和 **HOW**（实现模式），不重复代码
-- 每个设计文档对应一个子系统（如 `camera-system.md`、`token-budget-system.md`）
-- CLAUDE.md 保留概述和指向设计文档的引用，避免膨胀
-- 新增子系统时必须在此规则下方更新文档索引表
-
-**design/ 文档索引**：
-
-| 文档 | 内容 |
-|------|------|
-| `design/camera-system.md` | 摄像头自动移动：GetTargetRange 接口、缩放规则、7 种实现模式、线程安全、实体查找 |
-| `design/bridge-lifecycle.md` | CC Companion 桥接：连接流程、进程清理三层保障、MessageBus 双总线、参数覆盖顺序 |
-| `design/tool-system.md` | Tool 系统：ITool 接口、ToolRegistry 反射注册、执行流程、线程模型、McpCommandQueue |
-| `design/event-system.md` | 事件系统：Harmony 拦截、四级分级响应、事件驱动暂停、AutoPauseGuard |
-| `design/token-budget-system.md` | Token 预算：三档检查、Block/Warn 超限行为、UI 展示、Webhook 通知 |
-| `design/mcp-server-integration.md` | MCP Server 集成：SDK 接入方式、per-session 架构、响应清洗、通知通道、net472 适配、CLI 测试 |
-| `design/agent-runtime.md` | Agent Runtime：Scheduler、4 Agent 架构、Context Builder、TaskBoard、事件路由、记忆文件、Tool 过滤 |
-| `design/tool-result-suffix.md` | Tool Result Suffix：双工通知机制，一次性 suffix 追加到下一次工具结果后自动清空 |
+- **List 工具必须分页**：数据量可能超过 20 条的工具，提供 `page`/`page_size` 参数，默认每页 10
+- **精简输出格式**：用表格而非段落，只输出 AI 决策必需的信息
+- **查询类工具设计为「按需获取」**：摘要列表 + 按 ID 查询详情
 
 ## Token 预算系统
 

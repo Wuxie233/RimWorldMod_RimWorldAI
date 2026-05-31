@@ -38,6 +38,10 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Net.Http" />
+    <Reference Include="0Harmony">
+      <HintPath>F:\SteamLibrary\steamapps\workshop\content\294100\2009463077\Current\Assemblies\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="System.ValueTuple" HintPath="$(MSBuildProjectDirectory)\..\RimWorldMCP\System.ValueTuple.dll">
       <Private>True</Private>
     </Reference>

@@ -42,6 +42,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         private readonly Action<string> _logInfo;
         private readonly Action<string> _logError;
         private readonly Action<string> _logDebug;
+        private readonly Action<string> _logWarn;
         private Ccb? _ccb;
         private CcbWebSocket? _ccbWs;
         private McpClient? _mcp;
@@ -57,7 +58,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         public bool IsReady => _initialized && _mcp != null;
 
         public AgentEngine(AgentEngineConfig cfg, IDbStore dbStore, IGameStateProvider gameState,
-            Action<string>? logInfo = null, Action<string>? logError = null, Action<string>? logDebug = null)
+            Action<string>? logInfo = null, Action<string>? logError = null, Action<string>? logDebug = null, Action<string>? logWarn = null)
         {
             _cfg = cfg;
             _dbStore = dbStore;
@@ -65,6 +66,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             _logInfo = logInfo ?? (msg => { });
             _logError = logError ?? (msg => { });
             _logDebug = logDebug ?? (msg => { });
+            _logWarn = logWarn ?? (msg => { });
         }
 
         /// <summary>完整启动流程：Skills → AgentMCP → npm install → CCB spawn → WS → MCP → SSE</summary>
@@ -76,6 +78,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             CoreLog.OnInfo = _logInfo;
             CoreLog.OnError = _logError;
             CoreLog.OnDebug = _logDebug;
+            CoreLog.OnWarn = _logWarn;
 
             // Session 目录
             Directory.CreateDirectory(_cfg.ProjectPath);
@@ -112,15 +115,17 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             // 游戏事件订阅 + 游戏工具代理 → Agent MCP（必须在 CCB 之前完成）
             AgentLoop.WireEvents(_mcp);
+            _logInfo("[AgentEngine] 开始代理游戏工具...");
             var proxy = new ProxyToolProvider(_mcp);
             await proxy.RefreshToolsAsync();
             _agentHost.RegisterProvider(proxy);
-            _logInfo($"[AgentEngine] 游戏工具代理已注册");
+            _logInfo("[AgentEngine] 游戏工具代理已注册");
 
             // CCB 子进程 + WS — 在所有 MCP 服务就绪后启动
             var ccbReady = false;
             if (!string.IsNullOrEmpty(_cfg.CcbDir) && Directory.Exists(_cfg.CcbDir))
             {
+                _logInfo($"[AgentEngine] CCB dir={_cfg.CcbDir}, 开始启动...");
                 if (_cfg.CcbAutoInstall && !CompanionInstaller.IsInstalled(_cfg.CcbDir))
                 {
                     _logInfo("[AgentEngine] CCB: npm install...");
@@ -135,11 +140,20 @@ namespace RimWorldAgent.Core.AgentRuntime
                     ccbToken: _cfg.CcbToken, modelName: _cfg.ModelName);
                 if (_cfg.CcbAutoStart)
                 {
-                    if (_ccb.Start()) { await _ccb.WaitReadyAsync(15000); _logInfo("[AgentEngine] CCB: 就绪"); }
+                    _logInfo("[AgentEngine] 调用 _ccb.Start()...");
+                    var started = _ccb.Start();
+                    _logInfo($"[AgentEngine] _ccb.Start() = {started}");
+                    if (started)
+                    {
+                        _logInfo("[AgentEngine] 等待 CCB 就绪 (最多 15s)...");
+                        await _ccb.WaitReadyAsync(15000);
+                        _logInfo($"[AgentEngine] WaitReady 完成, _ccb.IsReady={_ccb.IsReady}");
+                    }
                 }
 
                 if (_ccb.IsReady)
                 {
+                    _logInfo("[AgentEngine] 开始 WS 连接...");
                     _ccbWs = new CcbWebSocket(_cfg.CcbWsUrl, _cfg.CcbToken ?? "")
                     {
                         BudgetLimit = _cfg.TokenBudgetLimit,
@@ -147,7 +161,9 @@ namespace RimWorldAgent.Core.AgentRuntime
                         ThinkingEffort = _cfg.ThinkingEffort,
                         MaxThinkingTokens = _cfg.MaxThinkingTokens
                     };
-                    if (await _ccbWs.ConnectAsync())
+                    var wsOk = await _ccbWs.ConnectAsync();
+                    _logInfo($"[AgentEngine] WS ConnectAsync = {wsOk}");
+                    if (wsOk)
                     {
                         AgentLoop.WireCcbStatus(_ccbWs);
                         _logInfo("[AgentEngine] CCB WS: 已连接");
@@ -159,6 +175,10 @@ namespace RimWorldAgent.Core.AgentRuntime
                         _ccbWs.Dispose();
                         _ccbWs = null;
                     }
+                }
+                else
+                {
+                    _logError("[AgentEngine] CCB: 启动失败或超时, 跳过 WS 连接");
                 }
             }
 

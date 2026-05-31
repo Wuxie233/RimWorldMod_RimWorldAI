@@ -21,10 +21,16 @@ namespace RimWorldAgent
 
         private async void InitAgentRuntime()
         {
-            if (_initialized) return;
+            // 先杀上一次的 CCB 残留（返回主菜单时 Game.Dispose 不通知 GameComponent）
+            ShutdownEngine();
+
             var settings = RimWorldAgentMod.Instance?.Settings;
             if (settings != null && !settings.AgentAutoRun) return;
             _initialized = true;
+
+            // 重载存档时清空上一轮残留数据
+            ChatDisplayState.Clear();
+            ToolDispatcher.ResetTaskCount();
 
             var modRoot = Path.GetDirectoryName(
                 typeof(GameComponent_RimWorldAgent).Assembly.Location) ?? ".";
@@ -68,12 +74,18 @@ namespace RimWorldAgent
             };
 
             // log 回调可能从后台线程（CCB stdout/stderr、WS ReceiveLoop、MCP HTTP）触发，
-            // 直接写 Verse.Log 会和 EditWindow_Log 的渲染迭代器冲突 → Collection was modified
-            _engine = new AgentEngine(cfg, dbStore, gameState,
-                logInfo: msg => LongEventHandler.ExecuteWhenFinished(() => Log.Message($"[agent-core] {msg}")),
-                logError: msg => LongEventHandler.ExecuteWhenFinished(() => Log.Error($"[agent-core] {msg}")),
-                logDebug: msg => LongEventHandler.ExecuteWhenFinished(() => Log.Message($"[agent-core] {msg}")));
+            // SafeLog 通过 ConcurrentQueue 入队，主线程 GameComponentUpdate 中 Flush 安全写入 Verse.Log
+            bool needInstall = cfg.CcbAutoInstall && !CompanionInstaller.IsInstalled(cfg.CcbDir);
+            if (needInstall)
+                Dialog_AgentLoading.StatusText = "正在安装依赖 (npm install)...";
 
+            _engine = new AgentEngine(cfg, dbStore, gameState,
+                logInfo: msg => SafeLog.Info($"[agent-core] {msg}"),
+                logError: msg => SafeLog.Error($"[agent-core] {msg}"),
+                logDebug: msg => SafeLog.Info($"[agent-core] {msg}"),
+                logWarn: msg => SafeLog.Warning($"[agent-core] {msg}"));
+
+            Dialog_AgentLoading.StatusText = "正在启动 Claude Code...";
             await _engine.InitAsync();
             _dbStore = dbStore;
 
@@ -99,9 +111,16 @@ namespace RimWorldAgent
                 ChatDisplayState.EnqueueUiEvent(() =>
                     ChatDisplayState.OnAssistantText(text));
 
-            ws.OnToolUse += (toolId, toolName, input) =>
+            ws.OnAssistantThinking += thinking =>
                 ChatDisplayState.EnqueueUiEvent(() =>
-                    ChatDisplayState.AddToolCall(toolId, toolName, input));
+                    ChatDisplayState.OnAssistantThinking(thinking));
+
+            ws.OnToolUse += (toolId, toolName, input) =>
+                {
+                    var meta = input?.ToString() ?? "";
+                    ChatDisplayState.EnqueueUiEvent(() =>
+                        ChatDisplayState.AddToolCall(toolId, toolName, meta));
+                };
 
             ws.OnResult += (subtype, _) =>
                 ChatDisplayState.EnqueueUiEvent(() =>
@@ -119,11 +138,16 @@ namespace RimWorldAgent
             ws.OnAborted += () =>
                 ChatDisplayState.EnqueueUiEvent(() =>
                     ChatDisplayState.MarkLastAborted());
+
+            ws.OnSystemNotification += text =>
+                ChatDisplayState.EnqueueUiEvent(() =>
+                    ChatDisplayState.AddSystemMessage(text));
         }
 
         public override void GameComponentUpdate()
         {
             base.GameComponentUpdate();
+            SafeLog.Flush();
             if (!_initialized || _engine == null) return;
 
             _engine.Tick();
@@ -147,5 +171,22 @@ namespace RimWorldAgent
             base.ExposeData();
             _dbStore?.ScribeExpose();
         }
+
+        private void ShutdownEngine()
+        {
+            CoreLog.Info("[agent-mod] 返回主菜单，开始关闭 Agent 和 CCB...");
+            try
+            {
+                _engine?.Dispose();
+                _engine = null;
+                _initialized = false;
+                CoreLog.Info("[agent-mod] Agent 和 CCB 已关闭");
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error($"[agent-mod] 关闭 Agent 失败: {ex.Message}");
+            }
+        }
+
     }
 }

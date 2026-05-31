@@ -51,6 +51,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 action = "Block",
                 cacheRead = TokenUsageTracker.TotalCacheReadTokens,
                 totalInput = TokenUsageTracker.TotalInputTokens,
+                cacheCreate = TokenUsageTracker.TotalCacheCreateTokens,
             });
         }
 

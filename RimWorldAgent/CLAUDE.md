@@ -13,23 +13,30 @@ AI Colony Runtime — AI 自主管理殖民地。通过 MCP 协议连接 RimWorl
 RimWorldAgent/
 ├── CLAUDE.md
 ├── RimWorldAgent.csproj       ← 单一项目 (net472, OutputType=Exe)
-├── README.md
 ├── resource/                  ← MOD 元数据（构建时复制到根 publish）
 │   ├── About/About.xml
 │   └── Skills/*.md (13个)
 ├── Core/                      ← 共享逻辑
 │   ├── AgentRuntime/          Scheduler / AgentOrchestrator / AgentConfig / ContextBuilder / InternalTools / ToolDispatcher
-│   ├── Data/                  ★ 数据抽象层 — ITokenStore + InMemory/LocalFile 实现
+│   │   └── CoreLog.cs         日志抽象出口（委托注入，Core 层统一日志接口）
+│   ├── Data/                  ★ 数据抽象层 — IDbStore + JsonDbStore/ScribeDbStore 实现
 │   ├── Mcp/                   MCP 客户端 + Agent MCP Server (:9878)
 │   └── CcbManager/            CCB 子进程管理 + CcbWebSocket + TokenUsageTracker
 ├── Exe/                       ← EXE Loader
 │   └── Program.cs             入口：find CCB → spawn → connect MCP → Agent Main Loop
 ├── Mod/                       ← MOD Loader (RimWorld 加载)
-│   ├── GameComponent_RimworldAgent.cs
+│   ├── GameComponent_RimworkAgent.cs   ★ 游戏生命周期 — InitAgentRuntime() 异步启动 + ShutdownEngine() 杀 CCB
+│   ├── CompanionInstaller.cs           npm install 管理 + Node.js 查找
+│   ├── SafeLog.cs                      线程安全日志队列（后台入队、主线程 Flush）
+│   ├── ScribeDbStore.cs                Token 数据 Scribe 持久化（MOD 模式）
+│   ├── AgentModSettings.cs             Mod 设置（Token 预算、思考模式等）
+│   ├── Hook_Bootstrap.cs               Harmony 补丁引导（[StaticConstructorOnStartup]）
+│   ├── Hook_GameDispose.cs             Game.Dispose 后杀 CCB 子进程释放端口
 │   └── UI/
-│       ├── Dialog_AiChat.cs       聊天窗 (Ctrl+Shift+C)
-│       ├── MapComponent_McpUI.cs  右下角按钮
-│       ├── ChatStateTypes.cs      本地类型
+│       ├── Dialog_AiChat.cs            聊天窗 (Ctrl+Shift+C) — 三栏：对话(60%)+工具卡片+任务
+│       ├── Dialog_AgentLoading.cs      ★ npm 安装/CCB 启动加载提示窗口
+│       ├── MapComponent_McpUI.cs       右下角按钮 + 自动打开对话框
+│       ├── ChatStateTypes.cs           ★ 聊天状态管理 — 流式 delta 替换、事件队列、CCClient 桥接
 ├── cc-companion/              ← CCB 桥接 (Node.js, npm start)
 └── publish/                   ← 构建输出 (git ignored)
 ```
@@ -71,7 +78,7 @@ RimWorldAgent (EXE/MOD)             RimWorldMCP (Mod DLL)
 AI 通过工具显式控制游戏暂停/恢复：
 - `enter_plan()` — 暂停游戏，进入规划阶段
 - `enter_act()` — 恢复游戏，进入执行阶段
-- Agent 休眠时自动恢复游戏（`GamePaceController.EnsureResumed`）
+- ACT 模式下 AI 始终在线（3 倍速只是游戏状态，不影响 Agent 可用性）
 
 ### Tool Result Suffix 双工通知
 
@@ -80,8 +87,9 @@ Agent 通过 MCP 工具设置一次性 suffix，MCP Server 在下一次工具结
 - `set_tool_result_suffix(suffix)` — 设置一次性后缀，追加后自动清空
 
 **NotisAgent 统一入口**：`AgentOrchestrator.NotisAgent(notification)` 封装双路逻辑：
-- Agent 运行中 + SessionMcp 可用 → `set_tool_result_suffix`（AI 下次工具调用时看到）
-- Agent 休眠或 MCP 不可用 → CcbWs 直接发送到 Companion（AI 立即收到）
+- SessionMcp 可用 → `set_tool_result_suffix`（AI 下次工具结果中看到，优先）
+- SessionMcp 不可用或失败 → CcbWs 直接发送到 Companion（降级）
+- 不再判断 `IsRunning`——ACT 阶段 AI 始终在线
 
 内部工具通过 `AgentOrchestrator.SessionMcp` 转发到 MCP Server。MCP 侧用 `volatile string ToolResultSuffix` 存储，`ExecuteAsync` 中追加后立即清空。
 
@@ -99,9 +107,20 @@ Agent 通过 MCP 工具设置一次性 suffix，MCP Server 在下一次工具结
 ### 中断机制
 
 所有 MCP 事件和弹框检测均触发立即中断：
-- `AgentOrchestrator.RequestInterrupt(summary)` — 标记中断 + 存储摘要 + `SendAbort()` 打断当前 CCB 会话
+- `AgentOrchestrator.RequestInterrupt(summary)` — 标记中断 + 存储摘要 + **始终** `SendAbort()` 打断 CCB 会话（无会话时 abort 是空操作安全）
 - 中断后新会话 prompt 顶部注入通知内容 + "如有必要可以暂停游戏"
-- `NotisAgent()` 作为保底双工通知（suffix 注入或 Direct WS）
+- `NotisAgent()` 作为保底双工通知：优先 suffix 注入（SessionMcp 可用时），失败降级直接发送到 Companion
+- `AgentOrchestrator.IsRunning` 仅用于 `AgentEngine.TickAsync` 防止重复启动会话，不再作为"休眠/活跃"判断
+
+### CCB 子进程生命周期
+
+**启动**：`StartedNewGame()` / `LoadedGame()` → `InitAgentRuntime()` → `AgentEngine.InitAsync()` → `CcbManager.Start()` → spawn Node.js
+
+**退出清理**（两条路径确保不会残留）：
+1. `InitAgentRuntime()` 入口先调 `ShutdownEngine()` → `AgentEngine.Dispose()` → `CcbManager.Dispose()` → `Stop()` → `process.Kill()`
+2. Harmony `[Hook_GameDispose]` Postfix 在 `Game.Dispose()` 时直接通过 PID 文件杀进程
+
+**关键**：RimWorld 返回主菜单时 `Game.Dispose()` 会被调用，但 `GameComponent` 不获通知。因此靠下次 `StartedNewGame()` / `LoadedGame()` 入口主动杀残留 + Hook_GameDispose 作保底。
 
 ## 开发
 
@@ -119,7 +138,21 @@ dotnet build RimWorldAgent/RimWorldAgent.csproj  # 单独 Agent
 - 引用 SimpleMspServer（MCP 协议共享库）
 - 游戏数据通过 MCP HTTP 获取
 - 游戏操作通过 MCP Tool 调用
-- 数据持久化通过 Core.Data/ 抽象层（Token），InMemory 和 LocalFile 两种实现
+- 数据持久化通过 Core.Data/ 抽象层（Token），JsonDbStore (EXE) 和 ScribeDbStore (MOD) 两种实现
+
+### 日志系统
+
+**两层架构**：
+
+```
+Core 层           CoreLog (抽象出口) ──委托注入──→ 宿主回调
+Mod 层            直接调用 CoreLog     ──注入──→ SafeLog (ConcurrentQueue) ──Flush──→ Verse.Log
+```
+
+- **`CoreLog`**（`Core/AgentRuntime/CoreLog.cs`）：Core 层统一日志接口，不引用 Verse。通过 `OnInfo/OnWarn/OnError/OnDebug` 四个委托注入宿主实现。`AgentEngine.InitAsync()` 中初始化所有四个委托
+- **`SafeLog`**（`Mod/SafeLog.cs`）：线程安全队列，后台线程（WS ReceiveLoop、CCB stdout）入队，主线程 `GameComponentUpdate` 中 `Flush()` 写入 `Verse.Log`
+- **统一规则**：Mod 层全部使用 `CoreLog.Info/Warn/Error`，不直接调 `SafeLog`
+- **调试日志**：临时调试用 `[CCGUI_DEBUG]` 前缀，问题解决后 grep 清理
 
 ### 异常处理规范
 
@@ -208,6 +241,84 @@ Companion 通过 `cc-companion/bridge/message-bus.ts` 集中管理所有 WebSock
 2. `KillStaleByPidFile()` — 清理 `.pid` 残留
 3. `StartCompanionProcess()` — 创建 `claude-sessions/rimworld-<sessionId>/` 目录，spawn `node --import tsx/esm companion/companion.ts --idle-timeout 30000`；config 通过环境变量传递，SDK 配置由用户 `.claude/settings.json` 提供，Windows 额外通过 Job Object 绑定子进程生命周期
 4. `CcbWebSocket.Connect()` — WebSocket 握手（hello/hello-ok）
+
+### 聊天显示状态（ChatDisplayState）
+
+**文件**：`Mod/UI/ChatStateTypes.cs`
+
+流式消息使用 **累积器 + REPLACE** 语义（非 APPEND），每个 `content_block` 独立为一条 `ChatEntry`：
+
+```
+stream_event content_block_start{thinking}
+  → OnAssistantThinking("")        空串信号 = 结束上条流式 + 新建条目（ThinkingText=""）
+stream_event thinking_delta "我在思考..."
+  → OnAssistantThinking("我在思考...")  累积 _deltaAccum, 替换 _streamingEntry.ThinkingText
+stream_event content_block_start{text}
+  → OnAssistantText("")            空串信号 = 结束上条流式 + 新建条目（Text=""）
+stream_event text_delta "正文..."
+  → OnAssistantText("正文...")      累积 _deltaAccum, 替换 _streamingEntry.Text, 清除 ThinkingText
+...
+result
+  → FinishStreaming()              _streamingEntry → Done
+```
+
+**关键设计**：
+- `OnUserMessage(text)` — 结束上轮流式 → 新增用户条目（不清理工具卡片）
+- `OnSdkMessage` / `OnStreamEvent` 的完整实现在远程 main 的 `Bridge/ChatDisplayState.cs`（远程 main 的 CCClient.ReceiveLoop 直调这些方法）
+- 当前 Agent 侧通过 `CcbWebSocket` 事件 → `GameComponent_RimworkAgent.WireChatDisplayUi` → `EnqueueUiEvent` → UI 线程 `DrainEvents` 消费
+- SDK echo 的 `user` 消息不解析文本/思考（仅 `CountToolResults`），避免重复显示
+
+### Token 预算与缓存计算
+
+**缓存命中率公式**（与 Web 端一致）：
+```
+cacheHitRate = TotalCacheReadTokens / (TotalInputTokens + TotalCacheReadTokens + TotalCacheCreateTokens) * 100
+```
+
+**Token 提取**：仅从最终 `assistant` 消息的 `usage` 字段提取，跳过 `stream_event` 的 `message_start`（避免 input/cache_read 双重计数）。
+
+**预算更新**：`PushBudgetUpdate` 通过 WS `budget-update` 事件推送 `used/limit/cacheRead/totalInput/cacheCreate` 到 Companion → Web 页面。
+
+### Dialog_AiChat 布局
+
+```
+┌─────────────────────────────────────────────────────┐
+│  顶栏：殖民地 · 日期                        Token  │
+│  [预算横幅：仅 Warning/Critical/Exceeded 时显示]    │
+├──────────────────────────┬──────────────────────────┤
+│                          │  工具调用 (N)             │
+│  对话 (60%)              │  ◎ 工具名称   1.2s       │
+│                          │  ✓ 工具名称   0.3s       │
+│                          ├──────────────────────────┤
+│                          │  任务 (N)                 │
+│                          │  ▶ 建造房间               │
+│                          │  ○ 种植作物               │
+├──────────────────────────┴──────────────────────────┤
+│  [输入框                                         发送] │
+│  ● 已连接 | PLAN / 暂停 | 透明 - + | 清空 继续 中断 │
+└─────────────────────────────────────────────────────┘
+```
+
+- 左侧对话流 + 右侧（工具卡片 + 任务面板）均使用手动滚动，无 `BeginScrollView` 闪烁
+- 底栏显示 Plan/Act 阶段 + 游戏速度状态（PLAN 琥珀色 / ACT 绿色 / 就绪灰色）
+
+### 加载流程
+
+```
+Game Load
+  ├── MapComponentOnGUI → !CCClient.IsReady → 弹出 Dialog_AgentLoading
+  │     "正在准备 AI 助手..."
+  ├── InitAgentRuntime()
+  │     ├── 检测 node_modules → "正在安装依赖 (npm install)..."
+  │     ├── new AgentEngine, await InitAsync()
+  │     │     ├── npm install (如需要)
+  │     │     ├── spawn CCB 子进程 (node companion/companion.ts)
+  │     │     └── WebSocket hello/hello-ok 握手
+  │     ├── CCClient.SetSocket() → IsReady = true
+  │     └── ChatDisplayState.Clear() + ToolDispatcher.ResetTaskCount()
+  │
+  └── MapComponentOnGUI → CCClient.IsReady → 关闭 loading → 打开 Dialog_AiChat
+```
 
 ### 事件消费（SSE）
 

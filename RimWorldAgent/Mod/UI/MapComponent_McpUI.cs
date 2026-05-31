@@ -17,6 +17,18 @@ namespace RimWorldAgent
             base.MapComponentOnGUI();
             if (Find.CurrentMap == null) return;
 
+            // 初始化中 → 显示加载窗口
+            if (!_autoOpened && !CCClient.IsReady)
+            {
+                if (!Find.WindowStack.IsOpen<Dialog_AgentLoading>())
+                    Find.WindowStack.Add(new Dialog_AgentLoading());
+                return;
+            }
+
+            // 加载完成 → 关闭加载窗口
+            if (Find.WindowStack.IsOpen<Dialog_AgentLoading>())
+                Find.WindowStack.WindowOfType<Dialog_AgentLoading>()?.Close();
+
             // 首次加载自动打开 AI 对话窗口 + 设 3 倍速
             if (!_autoOpened && CCClient.IsReady)
             {

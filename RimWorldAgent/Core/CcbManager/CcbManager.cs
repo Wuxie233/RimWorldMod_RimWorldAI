@@ -55,7 +55,7 @@ namespace RimWorldAgent.Core.CcbManager
             {
                 mcpServers = new
                 {
-                    agent = new { type = "http", url = $"http://localhost:{_agentMcpPort}/mcp" }
+                    agent = new { type = "http", url = $"http://localhost:{_agentMcpPort}/mcp", timeout = 300000 }
                 }
             };
             var mcpJson = System.Text.Json.JsonSerializer.Serialize(mcpConfig, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
@@ -113,6 +113,9 @@ namespace RimWorldAgent.Core.CcbManager
                 _process.BeginOutputReadLine();
                 _process.BeginErrorReadLine();
 
+                // 写 PID 文件，供进程残留清理
+                WritePidFile(_process.Id);
+
                 CoreLog.Info($"[CcbManager] 已启动 (PID={_process.Id}, port={_ccbPort})");
                 return true;
             }
@@ -154,19 +157,43 @@ namespace RimWorldAgent.Core.CcbManager
             if (_process == null) return;
             try
             {
-                if (!_process.HasExited) { _process.Kill(); _process.WaitForExit(5000); }
+                if (_process.HasExited)
+                {
+                    CoreLog.Info($"[CcbManager] 进程已退出 (PID={_process.Id})，无需 kill");
+                }
+                else
+                {
+                    var pid = _process.Id;
+                    CoreLog.Info($"[CcbManager] 开始 kill CCB 子进程 (PID={pid})...");
+                    _process.Kill();
+                    _process.WaitForExit(5000);
+                    CoreLog.Info($"[CcbManager] CCB 子进程 kill 完成 (PID={pid})");
+                }
             }
             catch (Exception ex) { CoreLog.Info($"[CcbManager] 关闭子进程异常: {ex.Message}"); }
             finally
             {
                 _process.Dispose(); _process = null;
                 if (_jobHandle != IntPtr.Zero) { CloseHandle(_jobHandle); _jobHandle = IntPtr.Zero; }
+                DeletePidFile();
             }
         }
 
         public void Dispose() => Stop();
 
         // ========== PID 残留清理 ==========
+
+        private void WritePidFile(int pid)
+        {
+            try { File.WriteAllText(Path.Combine(_companionDir, ".pid"), pid.ToString()); }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 写 PID 文件失败: {ex.Message}"); }
+        }
+
+        private void DeletePidFile()
+        {
+            try { File.Delete(Path.Combine(_companionDir, ".pid")); }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 删除 PID 文件失败: {ex.Message}"); }
+        }
 
         private void KillStaleByPidFile()
         {

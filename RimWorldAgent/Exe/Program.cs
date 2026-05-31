@@ -62,7 +62,8 @@ namespace RimWorldAgent
             var engine = new AgentEngine(cfg, dbStore, gameState,
                 logInfo: msg => Console.WriteLine($"[Core] {msg}"),
                 logError: msg => Console.Error.WriteLine($"[Core] {msg}"),
-                logDebug: msg => Console.WriteLine($"[Core] {msg}"));
+                logDebug: msg => Console.WriteLine($"[Core] {msg}"),
+                logWarn: msg => Console.Error.WriteLine($"[Core] {msg}"));
 
             Console.WriteLine($"RimWorldAgent 启动");
             Console.WriteLine($"  MCP: {mcpUrl}");

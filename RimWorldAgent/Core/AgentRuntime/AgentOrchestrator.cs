@@ -35,14 +35,14 @@ namespace RimWorldAgent.Core.AgentRuntime
         /// <summary>中断通知摘要</summary>
         public static string InterruptSummary { get; set; } = "";
 
-        /// <summary>Agent 会话是否活跃</summary>
-        public static volatile bool IsRunning;
-
         /// <summary>上次执行 PLAN 的游戏日</summary>
         public static int LastPlanDay { get; set; } = -1;
 
+        /// <summary>当前是否有活跃的 AI 会话（AgentEngine 用，防止重复启动）</summary>
+        public static volatile bool IsRunning;
+
         public static string StatusText
-            => CurrentPhase switch { GamePhase.Plan => "PLAN / 暂停", GamePhase.Act => "ACT / 运行", _ => "就绪" };
+            => CurrentPhase switch { GamePhase.Plan => "PLAN / 暂停", GamePhase.Act => "ACT / 运行", _ => "ACT / 运行" };
 
         /// <summary>到了晨报/PLAN 时间？（新的一天，用于 EventForwarder 和 AgentEngine 统一调用）</summary>
         public static bool ShouldMorningReport()
@@ -84,27 +84,25 @@ namespace RimWorldAgent.Core.AgentRuntime
             OnStatusChanged?.Invoke(StatusText);
         }
 
-        /// <summary>统一中断入口：标记 + 摘要 + 立即 abort CCB 会话</summary>
+        /// <summary>统一中断入口：标记 + 摘要 + 立即 abort CCB 会话（无会话时 abort 是空操作，安全）</summary>
         public static void RequestInterrupt(string summary)
         {
             InterruptRequested = true;
             InterruptSummary = summary;
             CoreLog.Info($"[AgentOrchestrator] 中断请求: {summary}");
-            // 如果 Agent 正在运行，发 abort 立即打断当前 CCB 会话
-            if (IsRunning && CcbWs?.IsReady == true)
+            if (CcbWs?.IsReady == true)
             {
                 _ = CcbWs.SendAbort();
-                CoreLog.Info("[AgentOrchestrator] 已发送 abort 到 Companion");
+                _ = CcbWs.SendEvent("agent.interrupt", new { text = summary });
             }
         }
 
-        /// <summary>向 Agent 注入通知。运行中 → tool result suffix；否则 → 直接发送到 Companion。</summary>
+        /// <summary>向 Agent 注入通知。优先 suffix 注入（AI 工具结果中看到），失败则直接发送到 Companion。</summary>
         public static async Task NotisAgent(string notification)
         {
             if (string.IsNullOrEmpty(notification)) return;
 
-            // Agent 运行中 + MCP 可用 → suffix 注入（AI 下次工具调用时看到）
-            if (SessionMcp != null && IsRunning)
+            if (SessionMcp != null)
             {
                 try
                 {
@@ -122,7 +120,6 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
             }
 
-            // Agent 休眠或 suffix 失败 → 直接发送到 Companion
             if (CcbWs?.IsReady == true)
             {
                 _ = CcbWs.SendEvent("rimworld.chat", new

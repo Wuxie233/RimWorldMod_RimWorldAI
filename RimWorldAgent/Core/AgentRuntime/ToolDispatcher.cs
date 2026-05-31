@@ -33,7 +33,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         public static void MarkNotifReceived() => _notifReceivedCount++;
 
         private static readonly List<TaskItem> _tasks = new();
-        public static int PendingTaskCount => _tasks.FindAll(t => t.Status != "completed").Count;
+        public static int PendingTaskCount => _tasks.Count;
 
         /// <summary>线程安全快照，供游戏 UI 调用。</summary>
         public static List<TaskItem> TasksSnapshot()
@@ -64,26 +64,27 @@ namespace RimWorldAgent.Core.AgentRuntime
                 {
                     var tid = input.Value.TryGetProperty("taskId", out var ti) ? ti.ToString() : "";
                     var st = input.Value.TryGetProperty("status", out var ts) ? ts.GetString() ?? "" : "";
-                    lock (_tasks)
+                    if (st == "completed" || st == "deleted")
                     {
-                        foreach (var t in _tasks)
-                            if (t.Id == tid) { t.Status = st; break; }
+                        lock (_tasks) _tasks.RemoveAll(t => t.Id == tid);
+                    }
+                    else
+                    {
+                        lock (_tasks)
+                        {
+                            foreach (var t in _tasks)
+                                if (t.Id == tid) { t.Status = st; break; }
+                        }
                     }
                 }
             }
-            catch { /* ignore parse errors */ }
+            catch (Exception ex) { CoreLog.Info($"[ToolDispatcher] 任务追踪解析失败 ({toolName}): {ex.Message}"); }
         }
 
         public static async Task HandleAsync(
             CcbWebSocket ccbWs,
             string toolId, string toolName, JsonElement? input)
         {
-            if (!AgentOrchestrator.IsRunning)
-            {
-                await ccbWs.SendToolResult(toolId, "Error: Agent 会话已结束，请重新唤醒。", true);
-                return;
-            }
-
             if (toolName is "get_notifications" or "dismiss_notification")
                 _notifReceivedCount = 0;
 
@@ -106,7 +107,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             {
                 GamePhase.Plan => "PLAN",
                 GamePhase.Act => "ACT",
-                _ => AgentOrchestrator.IsRunning ? "ACT" : "就绪"
+                _ => "ACT"
             };
 
             // 通过 MCP 获取真实暂停状态
@@ -149,7 +150,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             var taskRemind = "";
             List<TaskItem> tasksCopy;
             lock (_tasks) tasksCopy = new List<TaskItem>(_tasks);
-            var pending = tasksCopy.FindAll(t => t.Status != "completed").Count;
+            var pending = tasksCopy.Count;
             if (pending > 0)
             {
                 _taskCheckCount++;
@@ -159,12 +160,11 @@ namespace RimWorldAgent.Core.AgentRuntime
                     var lines = new List<string>();
                     foreach (var t in tasksCopy)
                     {
-                        if (t.Status != "completed")
-                            lines.Add($"  [{t.Status}] {t.Subject}");
+                        lines.Add($"  [{t.Status}] {t.Subject}");
                         if (lines.Count >= 5) break;
                     }
                     var list = string.Join("\n", lines);
-                    taskRemind = $"\n\n<system-reminder>\n当前 {pending}/{tasksCopy.Count} 个任务未完成：\n{list}\n完成的任务请用 TaskUpdate 更新状态。\n</system-reminder>";
+                    taskRemind = $"\n\n<system-reminder>\n当前 {pending} 个任务未完成：\n{list}\n完成的任务请用 TaskUpdate 更新状态。\n</system-reminder>";
                 }
             }
             else { _taskCheckCount = 0; }

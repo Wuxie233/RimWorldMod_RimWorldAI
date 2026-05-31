@@ -123,7 +123,7 @@ namespace RimWorldAgent
                         CurrentModel = data.CurrentModel ?? "";
                     }
                 }
-                catch (Exception ex) { Log.Warning($"[ScribeDbStore] 加载失败: {ex.Message}"); }
+                catch (Exception ex) { CoreLog.Warn($"[ScribeDbStore] 加载失败: {ex.Message}"); }
             }
         }
 
