@@ -25,11 +25,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 AgentOrchestrator.InterruptSummary = "";
             }
 
-            // Layer 1: System Prompt (cached)
-            sb.AppendLine(AgentConfigs.Default.SystemPrompt.Trim());
-            sb.AppendLine();
-
-            // Layer 2: World Summary (via MCP get_world_summary)
+            // Layer 1: World Summary (via MCP get_world_summary)
             sb.AppendLine(await BuildWorldSummaryAsync());
             sb.AppendLine();
 
