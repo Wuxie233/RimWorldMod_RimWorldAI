@@ -1,45 +1,40 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using HarmonyLib;
 using Verse;
 
 namespace RimWorldAgent
 {
-    /// <summary>返回主菜单时 Game.Dispose() 被调用，Postfix 方式确保在游戏清理完成后杀 CCB</summary>
+    /// <summary>返回主菜单时 Game.Dispose() 被调用，扫描进程列表杀 CCB 释放端口</summary>
     [HarmonyPatch(typeof(Game), nameof(Game.Dispose))]
     internal static class Hook_GameDispose
     {
-        static void Postfix()
+        private static void Postfix()
         {
-            Log.Message("[Hook_GameDispose] Game.Dispose Postfix 触发");
             try
             {
-                var asmDir = Path.GetDirectoryName(typeof(Hook_GameDispose).Assembly.Location);
-                if (string.IsNullOrEmpty(asmDir)) { Log.Warning("[Hook_GameDispose] asmDir 为空"); return; }
-
-                var pidFile = Path.GetFullPath(Path.Combine(asmDir, "cc-companion", ".pid"));
-                if (!File.Exists(pidFile)) { Log.Warning($"[Hook_GameDispose] pid 文件不存在: {pidFile}"); return; }
-
-                var pidText = File.ReadAllText(pidFile).Trim();
-                if (!int.TryParse(pidText, out var pid)) { Log.Warning($"[Hook_GameDispose] pid 解析失败: '{pidText}'"); return; }
-
-                try
+                var procs = Process.GetProcesses();
+                var killed = 0;
+                foreach (var proc in procs)
                 {
-                    using var proc = Process.GetProcessById(pid);
-                    var name = proc.ProcessName.ToLowerInvariant();
-                    if (name != "node" && name != "node.exe") { Log.Warning($"[Hook_GameDispose] 进程名不匹配: {name}"); return; }
-                    Log.Message($"[Hook_GameDispose] 开始 kill CCB (PID={pid})...");
-                    proc.Kill();
-                    proc.WaitForExit(5000);
-                    Log.Message($"[Hook_GameDispose] CCB kill 完成 (PID={pid})");
-                }
-                catch (ArgumentException)
-                { Log.Warning($"[Hook_GameDispose] 进程已不存在 (PID={pid})"); }
-                catch (Exception ex)
-                { Log.Warning($"[Hook_GameDispose] kill 异常: {ex.Message}"); }
+                    try
+                    {
+                        var name = proc.ProcessName.ToLowerInvariant();
+                        if (name != "node" && name != "node.exe") continue;
+                        var fileName = proc.MainModule?.FileName ?? "";
+                        if (!fileName.Contains("cc-companion")) continue;
 
-                try { File.Delete(pidFile); } catch { }
+                        Log.Message($"[Hook_GameDispose] 发现残留 CCB 进程 PID={proc.Id} path={fileName}，正在关闭...");
+                        proc.Kill();
+                        proc.WaitForExit(5000);
+                        killed++;
+                        Log.Message($"[Hook_GameDispose] CCB 进程 {proc.Id} 已关闭");
+                    }
+                    catch (Exception ex) { Log.Warning($"[Hook_GameDispose] 处理进程 {proc.Id} 异常: {ex.Message}"); }
+                    finally { proc.Dispose(); }
+                }
+
+                if (killed > 0) Log.Message($"[Hook_GameDispose] 进程扫描清理完成，共关闭 {killed} 个 CCB 进程");
             }
             catch (Exception ex) { Log.Warning($"[Hook_GameDispose] 异常: {ex.Message}"); }
         }

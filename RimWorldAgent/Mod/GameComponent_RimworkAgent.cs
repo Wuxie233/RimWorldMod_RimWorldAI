@@ -75,17 +75,12 @@ namespace RimWorldAgent
 
             // log 回调可能从后台线程（CCB stdout/stderr、WS ReceiveLoop、MCP HTTP）触发，
             // SafeLog 通过 ConcurrentQueue 入队，主线程 GameComponentUpdate 中 Flush 安全写入 Verse.Log
-            bool needInstall = cfg.CcbAutoInstall && !CompanionInstaller.IsInstalled(cfg.CcbDir);
-            if (needInstall)
-                Dialog_AgentLoading.StatusText = "正在安装依赖 (npm install)...";
-
             _engine = new AgentEngine(cfg, dbStore, gameState,
                 logInfo: msg => SafeLog.Info($"[agent-core] {msg}"),
                 logError: msg => SafeLog.Error($"[agent-core] {msg}"),
                 logDebug: msg => SafeLog.Info($"[agent-core] {msg}"),
                 logWarn: msg => SafeLog.Warning($"[agent-core] {msg}"));
 
-            Dialog_AgentLoading.StatusText = "正在启动 Claude Code...";
             await _engine.InitAsync();
             _dbStore = dbStore;
 

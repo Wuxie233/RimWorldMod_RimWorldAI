@@ -19,6 +19,8 @@ namespace RimWorldAgent.Core.CcbManager
         private readonly int _mcpPort;
         private readonly int _agentMcpPort;
         private readonly string? _modelName;
+        private readonly long _budgetLimit;
+        private readonly string _budgetAction;
         private bool _ready;
         private IntPtr _jobHandle = IntPtr.Zero;
 
@@ -26,7 +28,7 @@ namespace RimWorldAgent.Core.CcbManager
         /// <summary>TickAndRestart 重启了 companion 进程时为 true，调用方检查后应清除</summary>
         public bool WasRestarted { get; set; }
 
-        public CcbManager(string companionDir, string projectPath, int ccbPort = 19999, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null)
+        public CcbManager(string companionDir, string projectPath, int ccbPort = 19999, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null, long budgetLimit = 0, string budgetAction = "Block")
         {
             _companionDir = companionDir;
             _projectPath = projectPath;
@@ -35,6 +37,8 @@ namespace RimWorldAgent.Core.CcbManager
             _agentMcpPort = agentMcpPort;
             _ccbToken = ccbToken;
             _modelName = modelName;
+            _budgetLimit = budgetLimit;
+            _budgetAction = budgetAction;
             _nodeExe = nodeExe ?? CompanionInstaller.FindNodeExe();
         }
 
@@ -46,7 +50,8 @@ namespace RimWorldAgent.Core.CcbManager
                 return false;
             }
 
-            // PID 残留清理
+            // 进程残留清理：先按进程名扫描（最可靠），再按 PID 文件（备份）
+            KillStaleByProcessScan();
             KillStaleByPidFile();
 
             Directory.CreateDirectory(_projectPath);
@@ -81,6 +86,8 @@ namespace RimWorldAgent.Core.CcbManager
                 };
                 psi.Environment["CCB_HOST"] = "0.0.0.0";
                 psi.Environment["CCB_PORT"] = _ccbPort.ToString();
+                psi.Environment["CCB_TOKEN_BUDGET_LIMIT"] = _budgetLimit.ToString();
+                psi.Environment["CCB_TOKEN_BUDGET_ACTION"] = _budgetAction;
                 if (!string.IsNullOrEmpty(_ccbToken))
                     psi.Environment["CCB_AUTH_TOKEN"] = _ccbToken;
 
@@ -180,6 +187,36 @@ namespace RimWorldAgent.Core.CcbManager
         }
 
         public void Dispose() => Stop();
+
+        /// <summary>通过进程列表扫描杀旧 CCB（不依赖 .pid 文件）</summary>
+        private void KillStaleByProcessScan()
+        {
+            try
+            {
+                var procs = Process.GetProcesses();
+                int killed = 0;
+                foreach (var proc in procs)
+                {
+                    try
+                    {
+                        var name = proc.ProcessName.ToLowerInvariant();
+                        if (name != "node" && name != "node.exe") continue;
+                        var fileName = proc.MainModule?.FileName ?? "";
+                        if (fileName.IndexOf("cc-companion", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            CoreLog.Info($"[CcbManager] 发现残留 CCB 进程 PID={proc.Id} path={fileName}");
+                            proc.Kill();
+                            proc.WaitForExit(3000);
+                            killed++;
+                        }
+                    }
+                    catch (Exception ex) { CoreLog.Info($"[CcbManager] 扫描进程 {proc.Id} 失败: {ex.Message}"); }
+                    finally { proc.Dispose(); }
+                }
+                if (killed > 0) CoreLog.Info($"[CcbManager] 进程扫描清理完成: 已杀 {killed} 个残留 CCB");
+            }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 进程扫描异常: {ex.Message}"); }
+        }
 
         // ========== PID 残留清理 ==========
 

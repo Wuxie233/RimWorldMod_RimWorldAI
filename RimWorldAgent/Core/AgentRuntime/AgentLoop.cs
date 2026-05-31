@@ -11,13 +11,12 @@ namespace RimWorldAgent.Core.AgentRuntime
     public static class AgentLoop
     {
         private static CcbWebSocket? _statusWs;
-        private static long _budgetLimit;
+        public static long BudgetLimit { get; set; }
 
         /// <summary>CCB WebSocket → Agent 状态推送到 Web 页面（幂等，仅保留最新连接）</summary>
         public static void WireCcbStatus(CcbWebSocket ccbWs)
         {
             _statusWs = ccbWs;
-            _budgetLimit = ccbWs.BudgetLimit;
             AgentOrchestrator.CcbWs = ccbWs;
 
             if (ccbWs.IsReady)
@@ -47,7 +46,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             _ = ws.SendEvent("budget-update", new
             {
                 used = TokenUsageTracker.TotalAllTokens,
-                limit = _budgetLimit,
+                limit = BudgetLimit,
                 action = "Block",
                 cacheRead = TokenUsageTracker.TotalCacheReadTokens,
                 totalInput = TokenUsageTracker.TotalInputTokens,

@@ -86,6 +86,7 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             // Data 层 — 注入 IDbStore
             TokenUsageTracker.Db = _dbStore;
+            AgentLoop.BudgetLimit = _cfg.TokenBudgetLimit;
 
             // Skills
             var skillsDir = _cfg.SkillsDir ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Skills");
@@ -98,19 +99,19 @@ namespace RimWorldAgent.Core.AgentRuntime
             _agentHost.Start();
             _logInfo($"[AgentEngine] AgentMCP :{_cfg.AgentMcpPort}");
 
-            // MCP 客户端 — 必须在 CCB 之前连接，确保游戏工具列表可用
+            // MCP 客户端 — 连接游戏 MCP Server，等待就绪后再代理工具
             _mcp = new McpClient(_cfg.McpUrl);
 
-            // 等待 MCP 服务就绪（EXE 模式下 Agent 可能先于游戏启动）
-            if (_cfg.WaitForGame)
+            _logInfo("[AgentEngine] 等待游戏 MCP 服务就绪...");
+            while (true)
             {
-                _logInfo("[AgentEngine] 等待游戏 MCP 服务就绪...");
-                while (true)
+                try
                 {
-                    try { await _mcp.CallTool("check_map_loaded"); break; }
-                    catch (Exception ex) { _logInfo($"[AgentEngine] 游戏尚未就绪: {ex.Message}，3s 后重试..."); await Task.Delay(3000); }
+                    var tools = await _mcp.ListToolsAsync();
+                    _logInfo($"[AgentEngine] 游戏 MCP 已连接 ({tools.Count} 工具)");
+                    break;
                 }
-                _logInfo("[AgentEngine] 游戏 MCP 已连接");
+                catch (Exception ex) { _logInfo($"[AgentEngine] 游戏 MCP 尚未就绪: {ex.Message}，3s 后重试..."); await Task.Delay(3000); }
             }
 
             // 游戏事件订阅 + 游戏工具代理 → Agent MCP（必须在 CCB 之前完成）
@@ -137,7 +138,8 @@ namespace RimWorldAgent.Core.AgentRuntime
 
                 _ccb = new Ccb(_cfg.CcbDir, _cfg.ProjectPath, _cfg.CcbPort,
                     mcpPort: _cfg.McpPort, agentMcpPort: _cfg.AgentMcpPort,
-                    ccbToken: _cfg.CcbToken, modelName: _cfg.ModelName);
+                    ccbToken: _cfg.CcbToken, modelName: _cfg.ModelName,
+                    budgetLimit: _cfg.TokenBudgetLimit, budgetAction: "Block");
                 if (_cfg.CcbAutoStart)
                 {
                     _logInfo("[AgentEngine] 调用 _ccb.Start()...");
@@ -156,7 +158,6 @@ namespace RimWorldAgent.Core.AgentRuntime
                     _logInfo("[AgentEngine] 开始 WS 连接...");
                     _ccbWs = new CcbWebSocket(_cfg.CcbWsUrl, _cfg.CcbToken ?? "")
                     {
-                        BudgetLimit = _cfg.TokenBudgetLimit,
                         ThinkingMode = _cfg.ThinkingMode,
                         ThinkingEffort = _cfg.ThinkingEffort,
                         MaxThinkingTokens = _cfg.MaxThinkingTokens
@@ -205,7 +206,6 @@ namespace RimWorldAgent.Core.AgentRuntime
                     _ccbWs?.Dispose();
                     _ccbWs = new CcbWebSocket(_cfg.CcbWsUrl, _cfg.CcbToken ?? "")
                     {
-                        BudgetLimit = _cfg.TokenBudgetLimit,
                         ThinkingMode = _cfg.ThinkingMode,
                         ThinkingEffort = _cfg.ThinkingEffort,
                         MaxThinkingTokens = _cfg.MaxThinkingTokens

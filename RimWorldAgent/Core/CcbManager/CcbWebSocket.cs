@@ -35,8 +35,6 @@ namespace RimWorldAgent.Core.CcbManager
         private readonly SemaphoreSlim _sendLock = new(1, 1);
         private readonly SemaphoreSlim _eventLock = new(1, 1);
 
-        /// <summary>Token 预算上限（0 = 无限制）</summary>
-        public long BudgetLimit { get; set; }
         /// <summary>思考模式：default / disabled / adaptive / fixed</summary>
         public string ThinkingMode { get; set; } = "default";
         /// <summary>思考力度：low / medium / high</summary>
@@ -181,12 +179,6 @@ namespace RimWorldAgent.Core.CcbManager
                 type = "hello",
                 client = new { name = "RimWorldAgent", version = "1.0" },
                 auth = new { token = _token },
-                budget = new
-                {
-                    limit = BudgetLimit,
-                    used = 0L,
-                    action = "Block"
-                },
                 thinking = new
                 {
                     mode = ThinkingMode,
