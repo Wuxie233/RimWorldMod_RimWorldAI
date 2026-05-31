@@ -37,7 +37,9 @@ namespace RimWorldAgent
                 ? Path.Combine(modRoot, settings!.SkillsDir)
                 : Path.GetFullPath(Path.Combine(modRoot, "Skills"));
 
-            var ccbDir = Path.GetFullPath(Path.Combine(modRoot, "cc-companion"));
+            var asmDir = Path.GetDirectoryName(
+                typeof(GameComponent_RimWorldAgent).Assembly.Location) ?? ".";
+            var ccbDir = Path.GetFullPath(Path.Combine(asmDir, "cc-companion"));
 
             var gameHost = settings?.GameMcpHost ?? "localhost";
             var gamePort = settings?.GameMcpPort ?? 9877;

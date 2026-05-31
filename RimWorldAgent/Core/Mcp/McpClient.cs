@@ -114,7 +114,7 @@ namespace RimWorldAgent.Core.Mcp
                         break;
 
                     default:
-                        // game/notification, game/deterioration, game/trapped
+                        CoreLog.Info($"[McpClient] 收到通知: {notif.Method}");
                         OnGameEvent?.Invoke(new ColonyEvent
                         {
                             Category = notif.Params?["Category"]?.GetValue<string>() ?? "",
