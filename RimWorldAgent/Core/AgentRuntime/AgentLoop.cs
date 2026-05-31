@@ -107,6 +107,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             var tcs = new TaskCompletionSource<bool>();
             var pendingTools = 0;
             var resultReceived = false;
+            var normalExit = false;
 
             void OnResult(string subtype, string? _)
             {
@@ -117,9 +118,10 @@ namespace RimWorldAgent.Core.AgentRuntime
                     return;
                 }
                 CoreLog.Debug($"[commander] 回合结束: {subtype} (pendingTools={Volatile.Read(ref pendingTools)})");
-                if (Volatile.Read(ref pendingTools) == 0)
-                    tcs.TrySetResult(true);
-                else
+                // 仅最终 success 才正常结束，中间 result 后模型还会继续调用工具
+                if (subtype == "success" && Volatile.Read(ref pendingTools) == 0)
+                { normalExit = true; tcs.TrySetResult(true); }
+                else if (subtype == "success")
                     Volatile.Write(ref resultReceived, true);
             }
 
@@ -166,8 +168,9 @@ namespace RimWorldAgent.Core.AgentRuntime
             }
             finally
             {
-                // 通知 Companion 停止当前 SDK 查询，避免会话结束后 SDK 继续消耗 Token
-                _ = ccbWs.SendAbort();
+                // 非正常退出时中断 SDK（中断/abort/超时），正常 success 退出时 SDK 已自行停止
+                if (!normalExit)
+                    _ = ccbWs.SendAbort();
 
                 ccbWs.OnAborted -= OnAborted;
                 InternalToolRegistry.OnExitRequested -= OnExit;
