@@ -2,7 +2,7 @@
  * SDK 会话管理 — AsyncStream + query + 响应处理
  */
 
-import { join } from 'path';
+import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
 import { buildSystemPrompt } from '../rimworld/context.js';
 import type { CompanionConfig } from '../companion/config.js';
@@ -54,6 +54,26 @@ export class AsyncStream<T = any> {
 export function createSession(sdk: any, config: CompanionConfig, abortController?: AbortController) {
   const inputStream = new AsyncStream<any>();
 
+  // 排除 projectPath 之外的 CLAUDE.md（SDK 从 cwd 向上遍历时会发现父目录的 CLAUDE.md）
+  // SDK 的 isClaudeMdExcluded 将路径 \→/ 后用 picomatch.isMatch 精确匹配（大小写敏感）
+  // 因此同时添加原始大小写和小写版本，防止 Windows 盘符大小写不一致导致漏排
+  const addExclude = (p: string) => {
+    const n = p.replaceAll('\\', '/');
+    claudeMdExcludes.push(n);
+    const lower = n.toLowerCase();
+    if (lower !== n) claudeMdExcludes.push(lower);
+  };
+  const claudeMdExcludes: string[] = [];
+  let cursor = resolve(config.projectPath);
+  while (true) {
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+    addExclude(join(cursor, 'CLAUDE.md'));
+  }
+  // 同时排除家目录 User 级 CLAUDE.md（~/.claude/CLAUDE.md）
+  addExclude(join(homedir(), '.claude', 'CLAUDE.md'));
+
   const options = {
     cwd: config.projectPath,
     model: config.modelName || undefined,
@@ -64,6 +84,7 @@ export function createSession(sdk: any, config: CompanionConfig, abortController
     autoCompactEnabled: true,
     includePartialMessages: true,
     settingSources: config.settingSources,
+    claudeMdExcludes,
     systemPrompt: [buildSystemPrompt(config.projectPath), SYSTEM_PROMPT_DYNAMIC_BOUNDARY],
     stderr: (data: string | Buffer) => {
       const text = typeof data === 'string' ? data : data.toString();
@@ -119,6 +140,7 @@ export function createResponseProcessor(
   cwd: string,
   onMessage?: (msg: any) => void,
   onInit?: (msg: any) => void,
+  onTasksChanged?: () => void,
 ) {
   let sessionId = 'pending';
   let processing = false;
@@ -167,6 +189,7 @@ export function createResponseProcessor(
                 console.log(`[tool] 调用: ${block.name}`);
                 // 追踪 SDK 任务：TaskCreate / TaskUpdate → RuntimeState.sdkTasks
                 trackSdkTask(block.name, block.input);
+                onTasksChanged?.();
               }
             }
           }

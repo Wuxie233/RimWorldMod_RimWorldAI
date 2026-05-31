@@ -166,7 +166,7 @@
 | get_skills / active_skill | Agent 内部工具：查看可用技能/激活获取详细指南 |
 | create_growing_zone / set_grower_plant | 种植区创建与植物类型设置 |
 | haul_item / drop_carried | 搬运物品到指定位置/放下手中物品 |
-| enter_plan / enter_act | Plan/Act 阶段切换，暂停/恢复游戏 |
+| enter_plan / enter_act | Agent 内部工具：Plan/Act 阶段切换，暂停/恢复游戏 |
 
 ## 推送消息响应
 - `弹框提示` — 立即调 get_open_dialogs 查看选项并做出选择

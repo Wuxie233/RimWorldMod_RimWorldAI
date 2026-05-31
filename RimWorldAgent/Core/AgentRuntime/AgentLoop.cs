@@ -108,18 +108,23 @@ namespace RimWorldAgent.Core.AgentRuntime
             var pendingTools = 0;
             var resultReceived = false;
             var normalExit = false;
+            var lastActivityTicks = DateTime.UtcNow.Ticks;
+            const long inactivityTimeoutTicks = 120000 * TimeSpan.TicksPerMillisecond;
+
+            void NoteActivity() => Volatile.Write(ref lastActivityTicks, DateTime.UtcNow.Ticks);
 
             void OnResult(string subtype, string? _)
             {
+                NoteActivity();
+                var pending = Volatile.Read(ref pendingTools);
                 if (AgentOrchestrator.InterruptRequested)
                 {
                     CoreLog.Info("[AgentLoop] 检测到中断请求，结束会话");
                     tcs.TrySetResult(true);
                     return;
                 }
-                CoreLog.Debug($"[commander] 回合结束: {subtype} (pendingTools={Volatile.Read(ref pendingTools)})");
-                // 仅最终 success 才正常结束，中间 result 后模型还会继续调用工具
-                if (subtype == "success" && Volatile.Read(ref pendingTools) == 0)
+                CoreLog.Debug($"[commander] 回合结束: {subtype} (pendingTools={pending})");
+                if (subtype == "success" && pending == 0)
                 { normalExit = true; tcs.TrySetResult(true); }
                 else if (subtype == "success")
                     Volatile.Write(ref resultReceived, true);
@@ -127,6 +132,7 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             async void OnToolUse(string toolId, string toolName, JsonElement? input)
             {
+                NoteActivity();
                 Interlocked.Increment(ref pendingTools);
                 try
                 {
@@ -139,7 +145,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
                 finally
                 {
-                    if (Interlocked.Decrement(ref pendingTools) == 0 && resultReceived)
+                    var remaining = Interlocked.Decrement(ref pendingTools);
+                    if (remaining == 0 && resultReceived)
                         tcs.TrySetResult(true);
                 }
             }
@@ -163,12 +170,21 @@ namespace RimWorldAgent.Core.AgentRuntime
             try
             {
                 await ccbWs.SendChat(prompt);
-                var timeout = Task.Delay(120000);
-                await Task.WhenAny(tcs.Task, timeout);
+                // 活动感知超时：每次 tool_use / result 重置计时器，避免长对话被误杀
+                while (!tcs.Task.IsCompleted)
+                {
+                    var elapsedTicks = DateTime.UtcNow.Ticks - Volatile.Read(ref lastActivityTicks);
+                    if (elapsedTicks >= inactivityTimeoutTicks)
+                    {
+                        CoreLog.Info("[AgentLoop] 会话超时 (120s 无活动)");
+                        break;
+                    }
+                    var pollMs = (int)Math.Min((inactivityTimeoutTicks - elapsedTicks) / TimeSpan.TicksPerMillisecond, 1000);
+                    await Task.WhenAny(tcs.Task, Task.Delay(pollMs));
+                }
             }
             finally
             {
-                // 非正常退出时中断 SDK（中断/abort/超时），正常 success 退出时 SDK 已自行停止
                 if (!normalExit)
                     _ = ccbWs.SendAbort();
 

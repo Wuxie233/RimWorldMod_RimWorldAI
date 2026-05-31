@@ -1127,7 +1127,6 @@ export function getChatPageHtml(config: ChatPageConfig): string {
             }
             toolCount++;
             updateToolCount();
-            trackSdkTask(block.name, block.input);
             toolStartTimes[block.id] = Date.now();
             var tup3 = makeToolUsePanel(block.name, block.input, block.id);
             if (currentStreamAgent) {
@@ -1594,7 +1593,6 @@ export function getChatPageHtml(config: ChatPageConfig): string {
             lastAgentBody = null;
           }
         } else if (block.type === 'tool_use') {
-          trackSdkTask(block.name, block.input);
           toolStartTimes[block.id] = Date.now();
           var tup2 = makeToolUsePanel(block.name, block.input, block.id);
           if (saTarget) { tup2.remove(); saTarget.appendChild(tup2); }
@@ -1753,6 +1751,7 @@ export function getChatPageHtml(config: ChatPageConfig): string {
           var thPanel = createThinkingPanel(block.thinking || '', j);
           finalizeThinkingPanel(thPanel);
         } else if (block.type === 'tool_use') {
+          trackSdkTask(block.name, block.input);
           makeToolUsePanel(block.name, block.input, block.id);
         } else if (block.type === 'tool_result') {
           applyToolResult(block, null);

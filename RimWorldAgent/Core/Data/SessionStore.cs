@@ -1,8 +1,8 @@
 namespace RimWorldAgent.Core.Data
 {
-    /// <summary>Session 目录存储（替代已删除的 TaskBoard.SessionDir）</summary>
+    /// <summary>CCB 工作目录存储（project-path）</summary>
     public static class SessionStore
     {
-        public static string SessionDir { get; set; } = "";
+        public static string ProjectPath { get; set; } = "";
     }
 }

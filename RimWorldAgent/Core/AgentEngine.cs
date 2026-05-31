@@ -11,7 +11,7 @@ namespace RimWorldAgent.Core.AgentRuntime
     /// <summary>Agent 引擎配置 — 构造后传 InitAsync</summary>
     public class AgentEngineConfig
     {
-        public string SessionDir { get; set; } = "";
+        public string ProjectPath { get; set; } = "";
         public string? SkillsDir { get; set; }
         public string McpUrl { get; set; } = "http://localhost:9877";
         public int McpPort { get; set; } = 9877;
@@ -67,8 +67,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             CoreLog.OnDebug = _logDebug;
 
             // Session 目录
-            Directory.CreateDirectory(_cfg.SessionDir);
-            SessionStore.SessionDir = _cfg.SessionDir;
+            Directory.CreateDirectory(_cfg.ProjectPath);
+            SessionStore.ProjectPath = _cfg.ProjectPath;
 
             // Data 层 — Token 持久化
             TokenStore.Instance = new LocalFileTokenStore();
@@ -94,7 +94,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     await CompanionInstaller.InstallAsync(_cfg.CcbDir);
                 }
 
-                _ccb = new Ccb(_cfg.CcbDir, _cfg.SessionDir, _cfg.CcbPort,
+                _ccb = new Ccb(_cfg.CcbDir, _cfg.ProjectPath, _cfg.CcbPort,
                     mcpPort: _cfg.McpPort, agentMcpPort: _cfg.AgentMcpPort,
                     ccbToken: _cfg.CcbToken, modelName: _cfg.ModelName);
                 if (_cfg.CcbAutoStart)

@@ -93,6 +93,7 @@ async function main(): Promise<void> {
     // Agent Bus：SDK 所有消息 → Web + C# 客户端（setImmediate 避免阻塞 SDK 迭代器）
     (msg) => setImmediate(() => bus.publishSdkMessage(msg as Record<string, unknown>)),
     onInit,
+    () => bus.publishSdkTasks(),
   );
   let processResponses = currentProc.process;
 
@@ -121,6 +122,7 @@ async function main(): Promise<void> {
       // Agent Bus：SDK 所有消息 → Web + C# 客户端（setImmediate 避免阻塞 SDK 迭代器）
       (msg) => setImmediate(() => bus.publishSdkMessage(msg as Record<string, unknown>)),
       onInit,
+      () => bus.publishSdkTasks(),
     );
     processResponses = currentProc.process;
     console.log('[cc-companion] 新会话已创建');
@@ -182,11 +184,14 @@ async function main(): Promise<void> {
         applyThinking(thinkingReq.mode, thinkingReq.effort, thinkingReq.tokens);
       }
 
-      inputStream.enqueue({
-        type: 'user',
-        message: { role: 'user', content: text },
-      });
-      processResponses().catch(() => {});
+      // 仅 chat 事件且有文本内容才排入 SDK inputStream
+      if (wsMessage.event === 'chat' && text) {
+        inputStream.enqueue({
+          type: 'user',
+          message: { role: 'user', content: text },
+        });
+        processResponses().catch(() => {});
+      }
     },
     // onStatusChange
     (status) => {

@@ -12,7 +12,7 @@ namespace RimWorldAgent.Core.CcbManager
     {
         private Process? _process;
         private readonly string _companionDir;
-        private readonly string _sessionsDir;
+        private readonly string _projectPath;
         private readonly string? _nodeExe;
         private readonly int _ccbPort;
         private readonly string? _ccbToken;
@@ -26,10 +26,10 @@ namespace RimWorldAgent.Core.CcbManager
         /// <summary>TickAndRestart 重启了 companion 进程时为 true，调用方检查后应清除</summary>
         public bool WasRestarted { get; set; }
 
-        public CcbManager(string companionDir, string sessionsDir, int ccbPort = 19999, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null)
+        public CcbManager(string companionDir, string projectPath, int ccbPort = 19999, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null)
         {
             _companionDir = companionDir;
-            _sessionsDir = sessionsDir;
+            _projectPath = projectPath;
             _ccbPort = ccbPort;
             _mcpPort = mcpPort;
             _agentMcpPort = agentMcpPort;
@@ -49,7 +49,7 @@ namespace RimWorldAgent.Core.CcbManager
             // PID 残留清理
             KillStaleByPidFile();
 
-            Directory.CreateDirectory(_sessionsDir);
+            Directory.CreateDirectory(_projectPath);
 
             var mcpConfig = new
             {
@@ -60,11 +60,11 @@ namespace RimWorldAgent.Core.CcbManager
                 }
             };
             var mcpJson = System.Text.Json.JsonSerializer.Serialize(mcpConfig, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(Path.Combine(_sessionsDir, ".mcp.json"), mcpJson);
+            File.WriteAllText(Path.Combine(_projectPath, ".mcp.json"), mcpJson);
 
             var args = $"--import tsx/esm companion/companion.ts"
                 + $" --idle-timeout 30000"
-                + $" --project-path \"{_sessionsDir}\"";
+                + $" --project-path \"{_projectPath}\"";
             if (!string.IsNullOrEmpty(_modelName))
                 args += $" --model-name \"{_modelName}\"";
 

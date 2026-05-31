@@ -99,9 +99,9 @@ namespace RimWorldAgent
             listing.Label("  (留空使用默认 resource/Skills/)");
             Settings.SkillsDir = listing.TextEntry(Settings.SkillsDir);
 
-            listing.Label("Session 目录");
+            listing.Label("Project 目录");
             listing.Label("  (留空使用默认 claude-sessions/rimworld-agent/)");
-            Settings.SessionDir = listing.TextEntry(Settings.SessionDir);
+            Settings.ProjectPath = listing.TextEntry(Settings.ProjectPath);
 
             // ==================== CC Companion 安装 ====================
             listing.Gap(12f);

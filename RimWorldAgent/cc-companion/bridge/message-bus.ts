@@ -156,6 +156,15 @@ export class MessageBus {
     this.send({ type: 'aborted' });
   }
 
+  /**
+   * 广播 SDK 任务列表更新（TaskCreate / TaskUpdate 后触发）。
+   *
+   * 消费者：Web 页面右侧栏 AI 计划列表。
+   */
+  publishSdkTasks(): void {
+    this.send({ type: 'sdk-tasks', tasks: RuntimeState.sdkTasks });
+  }
+
   // ==================== 内部 ====================
 
   /** 序列化并广播 */

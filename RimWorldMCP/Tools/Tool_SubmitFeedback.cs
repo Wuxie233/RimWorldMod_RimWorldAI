@@ -47,6 +47,8 @@ namespace RimWorldMCP.Tools
                 var modRoot = FindModRoot();
                 if (modRoot == null)
                     return Task.FromResult(ToolResult.Error("无法定位 mod 根目录，反馈写入失败。"));
+                if (!Directory.Exists(modRoot))
+                    Directory.CreateDirectory(modRoot);
                 var filePath = Path.Combine(modRoot, "feedback.md");
 
                 var now = DateTime.Now;

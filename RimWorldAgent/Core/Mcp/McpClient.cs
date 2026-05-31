@@ -199,7 +199,9 @@ namespace RimWorldAgent.Core.Mcp
                         while (reader.TryRead(out var msg))
                         {
                             if (msg is JsonRpcNotification notif)
+                            {
                                 onNotification(notif);
+                            }
                             await writer.WriteAsync(msg, ct);
                         }
                     }

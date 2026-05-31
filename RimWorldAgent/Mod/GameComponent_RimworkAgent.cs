@@ -24,10 +24,10 @@ namespace RimWorldAgent
             _initialized = true;
 
             var modRoot = Path.GetDirectoryName(typeof(GameComponent_RimWorldAgent).Assembly.Location) ?? ".";
-            var defaultSessionDir = Path.Combine(modRoot, "claude-sessions", "rimworld-agent");
-            var sessionDir = !string.IsNullOrEmpty(settings?.SessionDir)
-                ? Path.Combine(modRoot, settings!.SessionDir)
-                : defaultSessionDir;
+            var defaultProjectPath = Path.Combine(modRoot, "claude-sessions", "rimworld-agent");
+            var projectPath = !string.IsNullOrEmpty(settings?.ProjectPath)
+                ? Path.Combine(modRoot, settings!.ProjectPath)
+                : defaultProjectPath;
 
             var skillsDir = !string.IsNullOrEmpty(settings?.SkillsDir)
                 ? Path.Combine(modRoot, settings!.SkillsDir)
@@ -37,7 +37,7 @@ namespace RimWorldAgent
 
             var cfg = new AgentEngineConfig
             {
-                SessionDir = sessionDir,
+                ProjectPath = projectPath,
                 SkillsDir = skillsDir,
                 McpUrl = $"http://localhost:{settings?.McpPort ?? 9877}",
                 McpPort = settings?.McpPort ?? 9877,

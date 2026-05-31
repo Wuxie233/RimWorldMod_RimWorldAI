@@ -13,6 +13,7 @@ namespace RimWorldAgent.Core.AgentRuntime
     {
         public static int ActPauseRemindThreshold = 5;
         private static int _actPauseCheckCount;
+        private static int _planCheckCount;
 
         public static int NotifCheckThreshold = 5;
         private static int _notifReceivedCount;
@@ -78,6 +79,16 @@ namespace RimWorldAgent.Core.AgentRuntime
                 var result = await mcp.CallTool(toolName, args);
                 sw.Stop();
                 log($"工具完成: {toolName} 用时 {sw.ElapsedMilliseconds}ms");
+
+                // toggle_pause 的结果同步到 PaceController，保持 Agent 端状态一致
+                if (toolName == "toggle_pause" && AgentOrchestrator.PaceController != null)
+                {
+                    var nowPaused = result != null
+                        && result.IndexOf("已暂停", StringComparison.Ordinal) >= 0
+                        && result.IndexOf("运行中", StringComparison.Ordinal) < 0;
+                    AgentOrchestrator.PaceController.IsPaused = nowPaused;
+                }
+
                 var suffix = BuildModeSuffix();
                 await ccbWs.SendToolResult(toolId, result + suffix);
 
@@ -119,6 +130,18 @@ namespace RimWorldAgent.Core.AgentRuntime
             }
             else { _actPauseCheckCount = 0; }
 
+            // PLAN 阶段停留过久提醒
+            var planPauseRemind = "";
+            if (AgentOrchestrator.CurrentPhase == GamePhase.Plan)
+            {
+                _planCheckCount++;
+                if (_planCheckCount > ActPauseRemindThreshold)
+                {
+                    planPauseRemind = "\n\n<system-reminder>\n你已在 PLAN 阶段停留较久。制定计划后请调用 enter_act() 恢复游戏执行操作，不要让游戏长时间冻结。\n</system-reminder>";
+                }
+            }
+            else { _planCheckCount = 0; }
+
             // 通知堆积提醒
             var notifRemind = "";
             if (_notifReceivedCount > NotifCheckThreshold)
@@ -126,7 +149,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 notifRemind = "\n\n<system-reminder>\n你有未处理的通知，请用 get_notifications 查看并处理。用 dismiss_notification 关闭不需要的通知。\n</system-reminder>";
             }
 
-            return $"\n\n---\n当前模式: {phase}{actPauseRemind}{notifRemind}";
+            return $"\n\n---\n当前模式: {phase}{planPauseRemind}{actPauseRemind}{notifRemind}";
         }
     }
 }

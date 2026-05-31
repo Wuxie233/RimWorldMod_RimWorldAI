@@ -28,7 +28,7 @@ namespace RimWorldAgent
         public bool AgentAutoRun = true;
         public string PlanSpeed = "paused";
         public string SkillsDir = "";
-        public string SessionDir = "";
+        public string ProjectPath = "";
 
         public static readonly string[] LogLevelLabels = { "Debug", "Info", "Warn", "Error" };
 
@@ -52,7 +52,7 @@ namespace RimWorldAgent
             Scribe_Values.Look(ref AgentAutoRun, "agentAutoRun", true);
             Scribe_Values.Look(ref PlanSpeed, "planSpeed", "paused");
             Scribe_Values.Look(ref SkillsDir, "skillsDir", "");
-            Scribe_Values.Look(ref SessionDir, "sessionDir", "");
+            Scribe_Values.Look(ref ProjectPath, "projectPath", "");
         }
     }
 }

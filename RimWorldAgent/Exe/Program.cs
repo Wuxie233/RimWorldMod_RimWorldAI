@@ -38,16 +38,16 @@ namespace RimWorldAgent
             if (!string.IsNullOrEmpty(modelName)) Console.WriteLine($"  模型: {modelName}");
             if (planSpeed != "paused") Console.WriteLine($"  Plan 速度: {planSpeed}");
 
-            var sessionDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "claude-sessions", "dev-session");
-            Directory.CreateDirectory(sessionDir);
+            var projectPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "claude-sessions", "dev-session"));
+            Directory.CreateDirectory(projectPath);
 
-            TokenStore.Instance = new LocalFileTokenStore(Path.Combine(sessionDir, "RimWorldMCP_Token.json"));
+            TokenStore.Instance = new LocalFileTokenStore(Path.Combine(projectPath, "RimWorldMCP_Token.json"));
 
             var ccbDir = FindCcbDir();
 
             var cfg = new AgentEngineConfig
             {
-                SessionDir = sessionDir,
+                ProjectPath = projectPath,
                 McpUrl = mcpUrl,
                 ModelName = modelName,
                 PlanSpeed = planSpeed,
@@ -62,7 +62,7 @@ namespace RimWorldAgent
 
             Console.WriteLine($"RimWorldAgent 启动");
             Console.WriteLine($"  MCP: {mcpUrl}");
-            Console.WriteLine($"  Session: {sessionDir}");
+            Console.WriteLine($"  Project: {projectPath}");
             Console.WriteLine("等待游戏启动...");
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; _cts.Cancel(); };
 

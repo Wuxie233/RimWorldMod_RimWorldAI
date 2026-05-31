@@ -10,10 +10,15 @@ namespace RimWorldAgent.Core.AgentRuntime
     /// <summary>游戏暂停/恢复控制器 — Plan/Act 阶段切换时控制游戏速度</summary>
     public class GamePaceController : IDisposable
     {
-        private bool _isPaused;
+        private volatile bool _isPaused;
         private readonly SemaphoreSlim _opLock = new(1, 1);
 
-        public bool IsPaused => _isPaused;
+        /// <summary>游戏真实暂停状态。Agent 端通过 enter_plan/enter_act 设置，外部 toggle_pause 调用结果也会同步。</summary>
+        public bool IsPaused
+        {
+            get => _isPaused;
+            set => _isPaused = value;
+        }
 
         /// <summary>Plan 阶段游戏速度，默认 paused，可选 normal/fast/superfast/ultrafast</summary>
         public static string PlanSpeed { get; set; } = "paused";
