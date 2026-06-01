@@ -327,59 +327,90 @@ namespace RimWorldAgent
                 switch (type)
                 {
                     case "text_delta":
-                        EnqueueUiEvent(() => OnAssistantText(root.TryGetProperty("text", out var td) ? td.GetString() ?? "" : ""));
+                    {
+                        var text = root.TryGetProperty("text", out var td) ? td.GetString() ?? "" : "";
+                        EnqueueUiEvent(() => OnAssistantText(text));
                         break;
+                    }
                     case "thinking_delta":
-                        EnqueueUiEvent(() => OnAssistantThinking(root.TryGetProperty("thinking", out var th) ? th.GetString() ?? "" : ""));
+                    {
+                        var thinking = root.TryGetProperty("thinking", out var th) ? th.GetString() ?? "" : "";
+                        EnqueueUiEvent(() => OnAssistantThinking(thinking));
                         break;
+                    }
                     case "text_block":
-                        EnqueueUiEvent(() => OnAssistantText(root.TryGetProperty("text", out var tb) ? tb.GetString() ?? "" : ""));
+                    {
+                        var text = root.TryGetProperty("text", out var tb) ? tb.GetString() ?? "" : "";
+                        EnqueueUiEvent(() => OnAssistantText(text));
                         break;
+                    }
                     case "tool_call":
+                    {
                         var toolId = root.TryGetProperty("id", out var ti) ? ti.GetString() ?? "" : "";
                         var toolName = root.TryGetProperty("name", out var tn) ? tn.GetString() ?? "" : "";
-                        var toolInput = root.TryGetProperty("input", out var inp) ? inp.GetRawText() : "{}";
+                        var toolInput = root.TryGetProperty("input", out var inp)
+                            ? (inp.ValueKind == JsonValueKind.String ? inp.GetString() ?? "{}" : inp.GetRawText())
+                            : "{}";
                         EnqueueUiEvent(() => AddToolCall(toolId, toolName, toolInput));
                         break;
+                    }
                     case "tool_result":
+                    {
                         var trId = root.TryGetProperty("id", out var tri) ? tri.GetString() ?? "" : "";
                         var isErr = root.TryGetProperty("isError", out var ie) && ie.GetBoolean();
                         var durMs = root.TryGetProperty("durationMs", out var dm) ? dm.GetDouble() : 0;
                         EnqueueUiEvent(() => FinishToolCall(trId, isErr, durMs));
                         break;
+                    }
                     case "result":
-                        EnqueueUiEvent(() => { FinishStreaming(); UpdateBudgetFromMessage(root); });
+                    {
+                        var subtype = root.TryGetProperty("subtype", out var srs) ? srs.GetString() ?? "" : "";
+                        var used = root.TryGetProperty("used", out var u) ? u.GetInt64() : 0;
+                        var limit = root.TryGetProperty("limit", out var l) ? l.GetInt64() : 0;
+                        EnqueueUiEvent(() => { FinishStreaming(); UpdateBudget(subtype, used, limit); });
                         break;
+                    }
                     case "aborted":
                         EnqueueUiEvent(() => MarkLastAborted());
                         break;
                     case "system_init":
+                    {
                         var m = root.TryGetProperty("model", out var mm) ? mm.GetString() : null;
                         if (m != null) CurrentModel = m;
                         SessionId = root.TryGetProperty("session_id", out var sid) ? sid.GetString() ?? "" : "";
                         break;
+                    }
                     case "system":
+                    {
                         var sysText = root.TryGetProperty("text", out var st) ? st.GetString() ?? "" : "";
                         if (!string.IsNullOrEmpty(sysText))
                             EnqueueUiEvent(() => AddSystemMessage(sysText));
                         break;
+                    }
                     case "error":
+                    {
                         var errText = root.TryGetProperty("error", out var et) ? et.GetString() ?? "" : "";
                         if (!string.IsNullOrEmpty(errText))
                             EnqueueUiEvent(() => AddSystemMessage(errText));
                         break;
+                    }
                     case "user":
+                    {
                         var txt = root.TryGetProperty("text", out var ut) ? ut.GetString() ?? "" : "";
                         if (!string.IsNullOrEmpty(txt)) OnUserMessage(txt);
                         break;
+                    }
                     case "budget_status":
-                        EnqueueUiEvent(() => UpdateBudgetFromMessage(root));
+                    {
+                        var used = root.TryGetProperty("used", out var bu) ? bu.GetInt64() : 0;
+                        var limit = root.TryGetProperty("limit", out var bl) ? bl.GetInt64() : 0;
+                        EnqueueUiEvent(() => UpdateBudget(ubtype: "", used, limit));
                         break;
+                    }
                     case "agent-status":
                         AgentStatus = root.TryGetProperty("role", out var ar) ? ar.GetString() ?? "" : "";
                         break;
                     case "sdk-tasks":
-                        // WebUI 端通过 trackSdkTask JS 处理，Dialog 端通过 tool_call 中的 TaskCreate/TaskUpdate 本地追踪
                         break;
                 }
             }
@@ -389,11 +420,8 @@ namespace RimWorldAgent
             }
         }
 
-        private static void UpdateBudgetFromMessage(JsonElement root)
+        private static void UpdateBudget(string ubtype, long used, long limit)
         {
-            var used = root.TryGetProperty("used", out var u) ? u.GetInt64() : 0;
-            var limit = root.TryGetProperty("limit", out var l) ? l.GetInt64() : 0;
-
             static string Fmt(long v) => v >= 1_000_000 ? $"{v / 1_000_000f:F1}M" : v >= 1000 ? $"{v / 1000f:F0}K" : v.ToString();
 
             CurrentBudgetText = $"Token: {Fmt(used)}/{(limit > 0 ? Fmt(limit) : "--")}";

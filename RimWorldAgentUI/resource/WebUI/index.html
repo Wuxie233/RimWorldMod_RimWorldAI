@@ -1037,7 +1037,7 @@
 
       case 'text_block':
         hideReading(); setAbort(true);
-        addMessage(true, msg.text, '');
+        if (!hasStreamedText) addMessage(true, msg.text, '');
         break;
 
       case 'text_delta':
@@ -1088,7 +1088,7 @@
       case 'tool_result':
         var elapsedResult = msg.id && toolStartTimes[msg.id] !== undefined ? Date.now() - toolStartTimes[msg.id] : null;
         if (msg.id && elapsedResult != null) delete toolStartTimes[msg.id];
-        applyToolResult({ tool_use_id: msg.id, is_error: msg.isError, content: '' }, elapsedResult);
+        applyToolResult({ tool_use_id: msg.id, is_error: msg.isError, content: msg.content || '' }, elapsedResult);
         lastAgentBody = null;
         break;
 

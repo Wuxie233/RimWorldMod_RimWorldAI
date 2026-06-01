@@ -13,7 +13,7 @@ namespace RimWorldAgent.Core
         public static UiThinkingDelta ThinkingDelta(string thinking) => new UiThinkingDelta(thinking);
         public static UiTextBlock TextBlock(string text) => new UiTextBlock(text);
         public static UiToolCall ToolCall(string id, string name, string input) => new UiToolCall(id, name, input);
-        public static UiToolResult ToolResult(string id, bool isError, double durationMs) => new UiToolResult(id, isError, durationMs);
+        public static UiToolResult ToolResult(string id, bool isError, double durationMs, string? content = null) => new UiToolResult(id, isError, durationMs, content);
         public static UiResult Result(string subtype, string? stopReason) => new UiResult(subtype, stopReason ?? "");
         public static UiAborted Aborted() => new UiAborted();
         public static UiSystemInit SystemInit(string? model, string? sessionId) => new UiSystemInit(model, sessionId);
@@ -63,8 +63,9 @@ namespace RimWorldAgent.Core
         public string id { get; }
         public bool isError { get; }
         public double durationMs { get; }
-        public UiToolResult(string id, bool isError, double durationMs)
-        { this.id = id; this.isError = isError; this.durationMs = durationMs; }
+        public string? content { get; }
+        public UiToolResult(string id, bool isError, double durationMs, string? content = null)
+        { this.id = id; this.isError = isError; this.durationMs = durationMs; this.content = content; }
     }
 
     public class UiResult : UiMessage

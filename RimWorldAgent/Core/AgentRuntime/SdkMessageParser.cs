@@ -34,7 +34,11 @@ namespace RimWorldAgent.Core.AgentRuntime
                         result.Add(UiMessage.Aborted());
                         break;
                     case SdkUserMessage um:
-                        // user 消息不作 UiMessage 转换，UI 通过其他信道获取
+                        foreach (var block in um.Content)
+                        {
+                            if (block is SdkToolResultBlock tr)
+                                result.Add(UiMessage.ToolResult(tr.ToolUseId ?? "", tr.IsError, 0, tr.Content));
+                        }
                         break;
                     default:
                         CoreLog.Info($"[SdkMessageParser] 未处理的类型: {msg.Type}");
@@ -52,11 +56,10 @@ namespace RimWorldAgent.Core.AgentRuntime
                 TokenUsageTracker.Record(msg.Usage.InputTokens, msg.Usage.OutputTokens,
                     msg.Usage.CacheReadInputTokens ?? 0, msg.Usage.CacheCreationInputTokens ?? 0, 0);
 
+            // 文本由 stream_event TextDelta 实时推送，assistant 只发 tool_call
             foreach (var block in msg.Content)
             {
-                if (block is SdkTextBlock tb)
-                    outList.Add(UiMessage.TextBlock(tb.Text));
-                else if (block is SdkToolUseBlock tu)
+                if (block is SdkToolUseBlock tu)
                     outList.Add(UiMessage.ToolCall(tu.Id, tu.Name, tu.Input));
             }
         }
@@ -73,6 +76,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                         outList.Add(UiMessage.TextDelta(""));
                     else if (evt.BlockType == "thinking")
                         outList.Add(UiMessage.ThinkingDelta(""));
+                    else if (evt.BlockType == "tool_use")
+                        outList.Add(UiMessage.ToolCall(evt.ToolUseId ?? "", evt.ToolName ?? "", ""));
                     break;
                 case "content_block_delta":
                     if (evt.Text != null)
