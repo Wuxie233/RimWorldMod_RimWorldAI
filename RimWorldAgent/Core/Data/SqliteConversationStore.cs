@@ -61,7 +61,20 @@ namespace RimWorldAgent.Core.Data
             Record(ConvRole.System, text, "", "", "");
         }
 
-        private void Record(ConvRole role, string text, string thinking, string runId, string agentType)
+        public void RecordToolCall(string toolId, string name, string input)
+        {
+            Record(ConvRole.ToolCall, "", "", toolId ?? "",
+                agentType: "", toolName: name ?? "", toolInput: input ?? "");
+        }
+
+        public void RecordToolResult(string toolId, bool isError, double durationMs, string output)
+        {
+            Record(ConvRole.ToolResult, output ?? "", "", toolId ?? "",
+                agentType: "", isToolError: isError, toolDurationMs: durationMs);
+        }
+
+        private void Record(ConvRole role, string text, string thinking, string runId, string agentType,
+            string toolName = "", string toolInput = "", bool isToolError = false, double toolDurationMs = 0)
         {
             if (_disposed) return;
             lock (_writeLock)
@@ -70,13 +83,17 @@ namespace RimWorldAgent.Core.Data
                 {
                     using var conn = OpenConnection();
                     using var cmd = new SQLiteCommand(
-                        @"INSERT INTO conversation (role, text, thinking, run_id, agent_type, timestamp)
-                          VALUES (@role, @text, @thinking, @runId, @agentType, @ts)", conn);
+                        @"INSERT INTO conversation (role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp)
+                          VALUES (@role, @text, @thinking, @runId, @agentType, @toolName, @toolInput, @isToolError, @toolDurationMs, @ts)", conn);
                     cmd.Parameters.AddWithValue("@role", RoleToString(role));
                     cmd.Parameters.AddWithValue("@text", text ?? "");
                     cmd.Parameters.AddWithValue("@thinking", thinking ?? "");
                     cmd.Parameters.AddWithValue("@runId", runId ?? "");
                     cmd.Parameters.AddWithValue("@agentType", agentType ?? "");
+                    cmd.Parameters.AddWithValue("@toolName", toolName ?? "");
+                    cmd.Parameters.AddWithValue("@toolInput", toolInput ?? "");
+                    cmd.Parameters.AddWithValue("@isToolError", isToolError ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@toolDurationMs", toolDurationMs);
                     cmd.Parameters.AddWithValue("@ts", DateTime.UtcNow.ToString("o"));
                     cmd.ExecuteNonQuery();
                 }
@@ -94,7 +111,7 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, timestamp FROM conversation WHERE id = @id", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp FROM conversation WHERE id = @id", conn);
                 cmd.Parameters.AddWithValue("@id", id);
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
@@ -115,7 +132,7 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, timestamp FROM conversation ORDER BY id DESC LIMIT @n", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp FROM conversation ORDER BY id DESC LIMIT @n", conn);
                 cmd.Parameters.AddWithValue("@n", Math.Max(1, n));
                 var list = new List<ConversationEntry>();
                 using var reader = cmd.ExecuteReader();
@@ -139,7 +156,7 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, timestamp FROM conversation WHERE id < @beforeId ORDER BY id DESC LIMIT @n", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp FROM conversation WHERE id < @beforeId ORDER BY id DESC LIMIT @n", conn);
                 cmd.Parameters.AddWithValue("@beforeId", beforeId);
                 cmd.Parameters.AddWithValue("@n", Math.Max(1, n));
                 var list = new List<ConversationEntry>();
@@ -166,7 +183,11 @@ namespace RimWorldAgent.Core.Data
                 Thinking = reader.GetString(3),
                 RunId = reader.GetString(4),
                 AgentType = reader.GetString(5),
-                Timestamp = DateTime.TryParse(reader.GetString(6), out var ts) ? ts : DateTime.UtcNow
+                ToolName = reader.GetString(6),
+                ToolInput = reader.GetString(7),
+                IsToolError = reader.GetInt32(8) != 0,
+                ToolDurationMs = reader.GetDouble(9),
+                Timestamp = DateTime.TryParse(reader.GetString(10), out var ts) ? ts : DateTime.UtcNow
             };
         }
 
@@ -183,10 +204,16 @@ namespace RimWorldAgent.Core.Data
                         thinking    TEXT    NOT NULL DEFAULT '',
                         run_id      TEXT    NOT NULL DEFAULT '',
                         agent_type  TEXT    NOT NULL DEFAULT '',
+                        tool_name   TEXT    NOT NULL DEFAULT '',
+                        tool_input  TEXT    NOT NULL DEFAULT '',
+                        is_tool_error INTEGER NOT NULL DEFAULT 0,
+                        tool_duration_ms REAL NOT NULL DEFAULT 0,
                         timestamp   TEXT    NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_timestamp ON conversation(timestamp);", conn);
                 cmd.ExecuteNonQuery();
+                // 兼容旧表：尝试添加新列（已存在则忽略）
+                MigrateColumns(conn);
             }
             catch (Exception ex)
             {
@@ -207,6 +234,8 @@ namespace RimWorldAgent.Core.Data
             ConvRole.User => "user",
             ConvRole.Assistant => "assistant",
             ConvRole.System => "system",
+            ConvRole.ToolCall => "tool_call",
+            ConvRole.ToolResult => "tool_result",
             _ => "unknown"
         };
 
@@ -215,8 +244,29 @@ namespace RimWorldAgent.Core.Data
             "user" => ConvRole.User,
             "assistant" => ConvRole.Assistant,
             "system" => ConvRole.System,
+            "tool_call" => ConvRole.ToolCall,
+            "tool_result" => ConvRole.ToolResult,
             _ => ConvRole.System
         };
+
+        private static void MigrateColumns(SQLiteConnection conn)
+        {
+            try
+            {
+                foreach (var col in new[] { "tool_name", "tool_input", "is_tool_error", "tool_duration_ms" })
+                {
+                    var types = new Dictionary<string, string> {
+                        { "tool_name", "TEXT NOT NULL DEFAULT ''" },
+                        { "tool_input", "TEXT NOT NULL DEFAULT ''" },
+                        { "is_tool_error", "INTEGER NOT NULL DEFAULT 0" },
+                        { "tool_duration_ms", "REAL NOT NULL DEFAULT 0" }
+                    };
+                    using var ac = new SQLiteCommand($"ALTER TABLE conversation ADD COLUMN {col} {types[col]}", conn);
+                    ac.ExecuteNonQuery();
+                }
+            }
+            catch { /* 列已存在则忽略 */ }
+        }
 
         public void Dispose()
         {

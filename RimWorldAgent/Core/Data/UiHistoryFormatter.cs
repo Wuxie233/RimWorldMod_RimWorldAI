@@ -48,8 +48,34 @@ namespace RimWorldAgent.Core.Data
                 ConvRole.User => "user",
                 ConvRole.Assistant => "assistant",
                 ConvRole.System => "assistant",
+                ConvRole.ToolCall => "tool_call",
+                ConvRole.ToolResult => "tool_result",
                 _ => "assistant"
             };
+
+            if (entry.Role == ConvRole.ToolCall)
+            {
+                return new
+                {
+                    type = "tool_call",
+                    id = entry.Id,
+                    name = entry.ToolName ?? "",
+                    input = entry.ToolInput ?? ""
+                };
+            }
+
+            if (entry.Role == ConvRole.ToolResult)
+            {
+                return new
+                {
+                    type = "tool_result",
+                    id = entry.Id,
+                    tool_use_id = entry.RunId ?? "",
+                    is_error = entry.IsToolError,
+                    durationMs = entry.ToolDurationMs,
+                    content = entry.Text ?? ""
+                };
+            }
 
             // 构建 content 数组
             var content = new List<object>(2);

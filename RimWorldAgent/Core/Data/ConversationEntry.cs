@@ -8,11 +8,14 @@ namespace RimWorldAgent.Core.Data
     {
         User,
         Assistant,
-        System
+        System,
+        ToolCall,
+        ToolResult
     }
 
     /// <summary>
     /// 单条会话记录 — 独立于 ChatDisplayState/ChatEntry，专用于持久化。
+    /// 支持 user/assistant/system/tool_call/tool_result 五种类型。
     /// </summary>
     public class ConversationEntry
     {
@@ -23,21 +26,37 @@ namespace RimWorldAgent.Core.Data
         [JsonPropertyName("role")]
         public ConvRole Role { get; set; }
 
-        /// <summary>完整消息文本（可能为空，如纯思考消息）</summary>
+        /// <summary>消息文本 / tool output 内容</summary>
         [JsonPropertyName("text")]
         public string Text { get; set; } = "";
 
-        /// <summary>完整思考文本（无则为空）</summary>
+        /// <summary>思考文本（仅 assistant）</summary>
         [JsonPropertyName("thinking")]
         public string Thinking { get; set; } = "";
 
-        /// <summary>SDK 消息 UUID（用于前端去重）</summary>
+        /// <summary>SDK 消息 UUID / tool_use id</summary>
         [JsonPropertyName("run_id")]
         public string RunId { get; set; } = "";
 
         /// <summary>子 Agent 类型（空串 = 主 Agent）</summary>
         [JsonPropertyName("agent_type")]
         public string AgentType { get; set; } = "";
+
+        /// <summary>工具名（仅 ToolCall / ToolResult）</summary>
+        [JsonPropertyName("tool_name")]
+        public string ToolName { get; set; } = "";
+
+        /// <summary>工具输入 JSON（仅 ToolCall）</summary>
+        [JsonPropertyName("tool_input")]
+        public string ToolInput { get; set; } = "";
+
+        /// <summary>工具执行是否失败（仅 ToolResult）</summary>
+        [JsonPropertyName("is_tool_error")]
+        public bool IsToolError { get; set; }
+
+        /// <summary>工具执行耗时 ms（仅 ToolResult）</summary>
+        [JsonPropertyName("tool_duration_ms")]
+        public double ToolDurationMs { get; set; }
 
         /// <summary>UTC 时间戳</summary>
         [JsonPropertyName("timestamp")]

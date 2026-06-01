@@ -58,6 +58,35 @@ namespace RimWorldAgent.Core.Data
             lock (_lock) _entries.Add(entry);
         }
 
+        public void RecordToolCall(string toolId, string name, string input)
+        {
+            var entry = new ConversationEntry
+            {
+                Id = GetNextId(),
+                Role = ConvRole.ToolCall,
+                RunId = toolId ?? "",
+                ToolName = name ?? "",
+                ToolInput = input ?? "",
+                Timestamp = DateTime.UtcNow
+            };
+            lock (_lock) _entries.Add(entry);
+        }
+
+        public void RecordToolResult(string toolId, bool isError, double durationMs, string output)
+        {
+            var entry = new ConversationEntry
+            {
+                Id = GetNextId(),
+                Role = ConvRole.ToolResult,
+                RunId = toolId ?? "",
+                Text = output ?? "",
+                IsToolError = isError,
+                ToolDurationMs = durationMs,
+                Timestamp = DateTime.UtcNow
+            };
+            lock (_lock) _entries.Add(entry);
+        }
+
         public ConversationEntry? GetAt(long id)
         {
             lock (_lock)

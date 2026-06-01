@@ -91,6 +91,16 @@ namespace RimWorldAgent.Core.AgentRuntime
             {
                 ConversationStore?.RecordAssistantMessage(text, thinking, runId, agentType);
             };
+
+            // SDK 工具调用/结果 → 录制
+            UIMessageBus.OnToolCallRecorded += (toolId, name, input) =>
+            {
+                ConversationStore?.RecordToolCall(toolId, name, input);
+            };
+            UIMessageBus.OnToolResultRecorded += (toolId, isError, content) =>
+            {
+                ConversationStore?.RecordToolResult(toolId, isError, 0, content);
+            };
         }
 
         static AgentLoop()
@@ -224,6 +234,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             try
             {
                 await ccbWs.SendChat(ChatChannel.System, prompt);
+                ConversationStore?.RecordSystemMessage("[System Prompt] " + prompt);
                 // 活动感知超时：每次 tool_use / result 重置计时器，避免长对话被误杀
                 while (!tcs.Task.IsCompleted)
                 {

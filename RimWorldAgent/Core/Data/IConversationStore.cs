@@ -17,8 +17,14 @@ namespace RimWorldAgent.Core.Data
         /// <summary>记录 AI 回复（完整 text + thinking）</summary>
         void RecordAssistantMessage(string text, string thinking, string runId, string agentType);
 
-        /// <summary>记录系统消息（暂停提醒、错误等）</summary>
+        /// <summary>记录系统消息（暂停提醒、系统 prompt、错误等）</summary>
         void RecordSystemMessage(string text);
+
+        /// <summary>记录工具调用</summary>
+        void RecordToolCall(string toolId, string name, string input);
+
+        /// <summary>记录工具执行结果</summary>
+        void RecordToolResult(string toolId, bool isError, double durationMs, string output);
 
         /// <summary>按主键 ID 精确查询，不存在返回 null</summary>
         ConversationEntry? GetAt(long id);

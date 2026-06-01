@@ -1026,8 +1026,13 @@
         if (m.type === 'assistant' || m.type === 'user') {
           if (m.uuid) seenUuids[m.uuid] = true;
           addMsgSimple(m);
-          if (!oldestId || m.id < oldestId) oldestId = m.id;
+        } else if (m.type === 'tool_call') {
+          toolCount++; updateToolCount();
+          makeToolUsePanel(m.name, m.input, m.id);
+        } else if (m.type === 'tool_result') {
+          applyToolResultSimple({ tool_use_id: m.tool_use_id || m.id, is_error: m.is_error, content: m.content || '' });
         }
+        if (!oldestId || m.id < oldestId) oldestId = m.id;
       }
       // 历史 >= N 条时标记 hasMoreOlder，启动向上滚动加载
       hasMoreOlder = msgs.length >= 30;
@@ -1053,8 +1058,13 @@
         if (bm.type === 'assistant' || bm.type === 'user') {
           if (bm.uuid) seenUuids[bm.uuid] = true;
           addMsgSimple(bm);
-          if (!oldestId || bm.id < oldestId) oldestId = bm.id;
+        } else if (bm.type === 'tool_call') {
+          toolCount++; updateToolCount();
+          makeToolUsePanel(bm.name, bm.input, bm.id);
+        } else if (bm.type === 'tool_result') {
+          applyToolResultSimple({ tool_use_id: bm.tool_use_id || bm.id, is_error: bm.is_error, content: bm.content || '' });
         }
+        if (!oldestId || bm.id < oldestId) oldestId = bm.id;
       }
       messagesEl = realEl;  // 恢复
       var bFrag = document.createDocumentFragment();
@@ -1692,6 +1702,14 @@
     }
   }
 
+  // 简版 tool result 渲染（用于历史回放，无 timing 动画）
+  function applyToolResultSimple(block) {
+    var toolId = block.tool_use_id || block.id;
+    if (toolId && toolPanels[toolId]) {
+      applyToolResult(block, null);
+    }
+  }
+
   // ===== Send =====
   function sendMessage() {
     const text = inputEl.value.trim();
@@ -1699,6 +1717,8 @@
     var thinking = { mode: currentMode, effort: currentEffort };
     if (currentMode === 'fixed') thinking.tokens = currentTokens;
     ws.send(JSON.stringify({ type: 'chat', text: text, thinking: thinking }));
+    makeUserPanel(text);  // 本地渲染，不依赖服务端 echo
+    scrollDeferred();
     inputEl.value = '';
     adjustHeight();
     showReading();
