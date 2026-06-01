@@ -22,6 +22,7 @@ namespace RimWorldAgent
         public override void MapComponentOnGUI()
         {
             base.MapComponentOnGUI();
+            SafeLog.Flush();
             if (!_initialized)
             {
                 _initialized = true;

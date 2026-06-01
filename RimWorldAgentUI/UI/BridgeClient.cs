@@ -37,7 +37,7 @@ namespace RimWorldAgent
                 _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 await _ws.ConnectAsync(new Uri(_url), _cts.Token);
                 _isConnected = true;
-                Verse.Log.Message($"[BridgeClient] 已连接: {_url}");
+                SafeLog.Info($"[BridgeClient] 已连接: {_url}");
                 OnConnectedChanged?.Invoke();
                 _ = ReceiveLoop(_cts.Token);
             }
@@ -45,7 +45,7 @@ namespace RimWorldAgent
             catch (Exception ex)
             {
                 _isConnected = false;
-                Verse.Log.Warning($"[BridgeClient] 连接失败 ({_url}): {ex.Message}");
+                SafeLog.Warning($"[BridgeClient] 连接失败 ({_url}): {ex.Message}");
                 if (!_disposed) ScheduleReconnect();
             }
         }
@@ -83,7 +83,7 @@ namespace RimWorldAgent
             }
             catch (OperationCanceledException) { }
             catch (WebSocketException) { }
-            catch (Exception ex) { Verse.Log.Warning($"[BridgeClient] 接收异常: {ex.Message}"); }
+            catch (Exception ex) { SafeLog.Info($"[BridgeClient] 接收异常: {ex.Message}"); }
             finally
             {
                 _isConnected = false;
@@ -104,7 +104,7 @@ namespace RimWorldAgent
             }
             catch (OperationCanceledException) { }
             catch (WebSocketException) { _isConnected = false; }
-            catch (Exception ex) { Verse.Log.Warning($"[BridgeClient] 发送失败: {ex.Message}"); }
+            catch (Exception ex) { SafeLog.Info($"[BridgeClient] 发送失败: {ex.Message}"); }
         }
 
         // ===== 自动重连（固定间隔） =====
