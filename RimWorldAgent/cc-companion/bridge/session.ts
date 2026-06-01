@@ -106,6 +106,8 @@ export function createResponseProcessor(
         onMessage(message);
       }
     } catch (err: any) {
+      // AbortError 是正常中断，不打印错误
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) return;
       console.error(`SDK 处理错误: ${err.message}`);
     }
     processing = false;
