@@ -127,7 +127,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 _actPauseCheckCount++;
                 if (_actPauseCheckCount > ActPauseRemindThreshold)
                 {
-                    actPauseRemind = "\n\n<system-reminder>\n游戏仍处于暂停状态！你在 ACT 阶段，只有恢复游戏速度后才能执行实际操作。请调用 enter_act(speed=\"superfast\") 恢复游戏。\n</system-reminder>";
+                    actPauseRemind = "\n\n<system-reminder>\n游戏仍处于暂停状态！你在 ACT 阶段，如需推进工作进度请调用 enter_act(speed=\"暂停/正常/高速/极速\") 恢复游戏。\n</system-reminder>";
                 }
             }
             else { _actPauseCheckCount = 0; }
