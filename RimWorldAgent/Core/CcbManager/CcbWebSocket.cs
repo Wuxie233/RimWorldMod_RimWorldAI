@@ -84,14 +84,17 @@ public class CcbWebSocket : IDisposable
 
             await _ws.ConnectAsync(new Uri(_url), _cts.Token);
             _state = CcbClientState.Connected;
+            CoreLog.Info($"[CCGUI_DEBUG] WS 已连接: {_url}");
 
             await SendHello();
+            CoreLog.Info($"[CCGUI_DEBUG] hello 已发送, 等待 hello-ok...");
             _ = ReceiveLoop(_cts.Token);
 
             var timeout = Task.Delay(timeoutMs);
             if (await Task.WhenAny(_helloOk.Task, timeout) == _helloOk.Task)
             {
                 _state = CcbClientState.Ready;
+                CoreLog.Info("[CCGUI_DEBUG] hello-ok 收到, 状态=Ready");
                 _reconnectAttempts = 0;
                 _reconnectDelayMs = 5000;
                 _heartbeatTimer?.Dispose();
@@ -245,10 +248,12 @@ public class CcbWebSocket : IDisposable
             var root = doc.RootElement;
             if (!root.TryGetProperty("type", out var t)) return;
             var type = t.GetString();
+            CoreLog.Info($"[CCGUI_DEBUG] ProcessMessage type={type}");
 
             switch (type)
             {
                 case "hello-ok":
+                    CoreLog.Info("[CCGUI_DEBUG] 收到 hello-ok, 设置 _helloOk");
                     _helloOk?.TrySetResult(true);
                     break;
 

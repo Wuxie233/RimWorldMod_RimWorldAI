@@ -69,21 +69,28 @@ async function main() {
   };
 
   wss.on('connection', (ws: WebSocket) => {
+    log(`[CCGUI_DEBUG] 新 WS 连接, token=${CONFIG.token ? 'required' : 'none'}`);
     let authenticated = !CONFIG.token;
 
     ws.on('message', (data: Buffer) => {
       let raw: any;
       try { raw = JSON.parse(data.toString().trim()); }
-      catch { return; }
+      catch {
+        log(`[CCGUI_DEBUG] 无效 JSON: ${data.toString().substring(0, 200)}`);
+        return;
+      }
       const msg = raw as InboundMessage;
+      log(`[CCGUI_DEBUG] 收到消息 type=${msg.type} auth=${msg.auth ? 'yes' : 'no'}`);
 
       // auth
       if (msg.type === 'hello' && !authenticated) {
         if (msg.auth?.token === CONFIG.token) {
           authenticated = true;
           sendJson(ws, { type: 'hello-ok' });
+          log('[CCGUI_DEBUG] hello-ok 已发送');
         } else {
           sendJson(ws, { type: 'error', error: 'auth failed' });
+          log(`[CCGUI_DEBUG] auth 失败: msg.token='${msg.auth?.token}' config.token='${CONFIG.token}'`);
           ws.close();
         }
         return;
