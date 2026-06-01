@@ -30,7 +30,6 @@ namespace RimWorldAgent
             _initialized = true;
 
             // 重载存档时清空上一轮残留数据
-            ChatDisplayState.Clear();
             ToolDispatcher.ResetTaskCount();
 
             var modRoot = Path.GetDirectoryName(
@@ -91,9 +90,6 @@ namespace RimWorldAgent
                 var bridgePort = settings?.BridgePort ?? 19999;
                 BridgeBus.Start(bridgePort);
             }
-
-            // UI 统一数据源：BridgeBus.OnDisplayMessage → ChatDisplayState
-            BridgeBus.OnDisplayMessage += ChatDisplayState.ProcessDisplayMessage;
 
             // UI 总线：SDK 消息 → BridgeBus 广播 + 客户端消息 → CCB
             if (_engine.CcbWs != null)

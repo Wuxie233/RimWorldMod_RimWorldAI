@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <AssemblyName>RimWorldAgentUI</AssemblyName>
+    <RootNamespace>RimWorldAgent</RootNamespace>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Net.Http.WebRequest" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <Reference Include="System.ValueTuple" HintPath="$(MSBuildProjectDirectory)\..\RimWorldMCP\System.ValueTuple.dll">
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Clean -->
+  <Target Name="CleanExtras" AfterTargets="Clean">
+    <RemoveDir Directories="$(MSBuildProjectDirectory)\bin;..\publish\RimWorldAgentUI" ContinueOnError="true" />
+  </Target>
+
+  <!-- 构建完成后复制到 publish -->
+  <Target Name="PublishUI" AfterTargets="Build">
+    <MakeDir Directories="..\publish\RimWorldAgentUI\1.6\Assemblies" />
+    <ItemGroup>
+      <UIDeps Include="$(OutputPath)*.dll" Exclude="$(OutputPath)Assembly-CSharp.dll;$(OutputPath)UnityEngine*.dll;$(OutputPath)System.Net.Http.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UIDeps)" DestinationFolder="..\publish\RimWorldAgentUI\1.6\Assemblies" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\About.xml" DestinationFolder="..\publish\RimWorldAgentUI\About" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\Preview.png" DestinationFolder="..\publish\RimWorldAgentUI\About" Condition="Exists('$(MSBuildProjectDirectory)\resource\About\Preview.png')" />
+    <!-- WebUI 静态文件 -->
+    <MakeDir Directories="..\publish\RimWorldAgentUI\1.6\Assemblies\WebUI" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\WebUI\index.html" DestinationFolder="..\publish\RimWorldAgentUI\1.6\Assemblies\WebUI" Condition="Exists('$(MSBuildProjectDirectory)\resource\WebUI\index.html')" />
+  </Target>
+
+</Project>

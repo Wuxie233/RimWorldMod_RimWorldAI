@@ -38,30 +38,35 @@ SimpleMspServer 被两者共同引用。Agent → companion 通过 WS :19999。
 ## 架构
 
 ```
-                      CC Companion (Node.js)
+                      CC Companion (Node.js :19998)
                            │
               chat / abort  │  SDK 流式消息
                            │
-                    CcbWebSocket (C# :19999)
-                      │        │
-            SDK 消息  │        │  chat/abort
-              ↓       │        │     ↓
-         ChatDisplayState    输入经 CCB 转发到 SDK
-              ↓
-         游戏内 Dialog ← UI 线程 DrainEvents
+                    CcbWebSocket (C#)
+                      │
+            SDK 消息 ↓
+         BridgeBus (WS :19999)
+          │                │
+    ┌─────┘                └─────┐
+    │ SDK 广播                   │ 客户端 chat/abort
+    ▼                           ▼
+ WebUI(HTTP :19997)      游戏内 Dialog_AiChat
+ (RimWorldAgentUI 模组)   (RimWorldAgentUI 模组)
 ```
 
-| 端口 | 服务 | 协议 |
-|------|------|------|
-| `:9877` | MCP Server（游戏 Tool） | SSE / HTTP |
-| `:9878` | Agent MCP Server（内部 Tool + Proxy 代理全部游戏 Tool） | HTTP |
-| `:19998` | BridgeBus（UI 总线） | WebSocket |
-| `:19999` | CC Companion（SDK 桥接） | WebSocket |
+| 端口 | 服务 | 协议 | 所属 |
+|------|------|------|------|
+| `:9877` | MCP Server（游戏 Tool） | SSE / HTTP | RimWorldMCP |
+| `:9878` | Agent MCP Server（内部 + 代理全部游戏 Tool） | HTTP | RimWorldAgent |
+| `:19998` | CC Companion（SDK 桥接） | WebSocket | RimWorldAgent |
+| `:19999` | BridgeBus（UI 总线） | WebSocket | RimWorldAgent (Mod) |
+| `:19997` | WebUI HTTP | HTTP | RimWorldAgentUI |
 
 **关键设计**：
 - **CC Companion** 是纯 SDK 桥接——收 chat/abort，吐 SDK 流式消息
 - **ProxyToolProvider**：游戏 MCP 工具全部代理到 Agent MCP，SDK 只连 `agent` 端点
-- **ChatDisplayState**：WS 后台线程 → EnqueueUiEvent 入队 → UI 线程 DrainEvents 消费
+- **BridgeBus**：Agent Mod 启动，SDK 消息广播给所有 WS 客户端
+- **RimWorldAgentUI**：独立模组，通过 WS 连接 BridgeBus，自带 HTTP 服务提供 WebUI
 - **IDbStore + IGameStateProvider**：EXE/MOD 双模抽象，构造注入解耦
 
 ## 构建

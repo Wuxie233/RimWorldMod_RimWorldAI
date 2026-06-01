@@ -135,19 +135,24 @@ SyncGameStatusAsync() → 刷新 tick + paused
 ### 数据流
 
 ```
-                      CC Companion (Node.js)
+                      CC Companion (Node.js :19998)
                            │
-                    WS :19998
-                      chat / abort / SDK 消息
+                    chat / abort / SDK 消息
                            │
                     CcbWebSocket (C#)
-                      │        │
-            SDK 消息  │        │  chat/abort
-              ↓       │        │     ↓
-         ChatDisplayState    输入经 CCB 转发到 SDK
-              ↓
-         游戏内 Dialog ←── UI 线程 DrainEvents
+                           │
+                     SDK 消息 ↓
+                  BridgeBus (WS :19999)
+                   │              │
+             SDK 广播            客户端 chat/abort
+                   │              │
+          ┌────────┘              └────────┐
+          ▼                                ▼
+    WebUI (RimWorldAgentUI)      游戏内 Dialog (RimWorldAgentUI)
+    浏览器 :19997                BridgeClient → ChatDisplayState
 ```
+
+UI 模组 `RimWorldAgentUI` 通过 WebSocket 连接 BridgeBus，不引用 Agent 项目。
 
 ### Plan/Act 阶段
 

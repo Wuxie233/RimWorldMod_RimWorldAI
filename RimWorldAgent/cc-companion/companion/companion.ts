@@ -79,20 +79,23 @@ async function main() {
         log(`[CCGUI_DEBUG] 无效 JSON: ${data.toString().substring(0, 200)}`);
         return;
       }
-      const msg = raw as InboundMessage;
-      log(`[CCGUI_DEBUG] 收到消息 type=${msg.type} auth=${msg.auth ? 'yes' : 'no'}`);
+      const msg = raw as any;
+      log(`[CCGUI_DEBUG] 收到消息 type=${msg.type} token=${msg.auth?.token || '(none)'}`);
 
       // auth
-      if (msg.type === 'hello' && !authenticated) {
-        if (msg.auth?.token === CONFIG.token) {
-          authenticated = true;
-          sendJson(ws, { type: 'hello-ok' });
-          log('[CCGUI_DEBUG] hello-ok 已发送');
-        } else {
-          sendJson(ws, { type: 'error', error: 'auth failed' });
-          log(`[CCGUI_DEBUG] auth 失败: msg.token='${msg.auth?.token}' config.token='${CONFIG.token}'`);
-          ws.close();
+      if (msg.type === 'hello') {
+        if (!authenticated) {
+          if (msg.auth?.token === CONFIG.token) {
+            authenticated = true;
+          } else {
+            sendJson(ws, { type: 'error', error: 'auth failed' });
+            log(`[CCGUI_DEBUG] auth 失败: msg.token='${msg.auth?.token}' config.token='${CONFIG.token}'`);
+            ws.close();
+            return;
+          }
         }
+        sendJson(ws, { type: 'hello-ok' });
+        log(`[CCGUI_DEBUG] hello-ok 已发送${!CONFIG.token ? ' (无认证)' : ''}`);
         return;
       }
       if (!authenticated) return;
