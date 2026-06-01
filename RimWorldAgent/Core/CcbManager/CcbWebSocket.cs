@@ -221,7 +221,7 @@ public class CcbWebSocket : IDisposable
                         if (b is SdkToolUseBlock tu)
                         {
                             JsonElement? input = null;
-                            try { using var d = JsonDocument.Parse(tu.Input); input = d.RootElement; } catch { }
+                            try { using var d = JsonDocument.Parse(tu.Input); input = d.RootElement; } catch (Exception ex) { CoreLog.Info($"[CcbWS] 解析 tool_use input 失败 ({tu.Name}): {ex.Message}"); }
                             OnToolUse?.Invoke(tu.Id, tu.Name, input);
                         }
                     break;
