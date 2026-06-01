@@ -18,7 +18,7 @@ namespace RimWorldAgent
         {
             Console.OutputEncoding = Encoding.UTF8;
 
-            var mcpUrl = "http://localhost:9877";
+            var mcpUrl = "http://ddnsgo.codexvn.top:9877/";
             var modelName = "";
             var planSpeed = "paused";
             for (int i = 0; i < args.Length; i++)
@@ -69,8 +69,8 @@ namespace RimWorldAgent
             Console.WriteLine($"RimWorldAgent 启动");
             Console.WriteLine($"  MCP: {mcpUrl}");
             Console.WriteLine($"  Project: {projectPath}");
+            Console.WriteLine($"  WebUI: http://localhost:19998");
 
-            // 启动 BridgeBus — EXE 模式也一样开放 Web 前端端口
             BridgeBus.Start(19998);
 
             Console.WriteLine("等待游戏启动...");
