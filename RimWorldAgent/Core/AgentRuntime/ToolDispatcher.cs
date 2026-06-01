@@ -12,8 +12,10 @@ namespace RimWorldAgent.Core.AgentRuntime
     {
         public static int ActPauseRemindThreshold = 5;
         public static int PlanRemindThreshold = 20;
+        public static int ActTurnRemindThreshold = 20;
         private static int _actPauseCheckCount;
         private static int _planCheckCount;
+        private static int _actTurnCount;
 
         public static int NotifCheckThreshold = 5;
         private static int _notifReceivedCount;
@@ -28,7 +30,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             public string Status { get; set; } = "pending";
         }
 
-        public static void ResetActPauseCount() => _actPauseCheckCount = 0;
+        public static void ResetActPauseCount() { _actPauseCheckCount = 0; _actTurnCount = 0; }
         public static void ResetNotifCount() => _notifReceivedCount = 0;
         public static void MarkNotifReceived() => _notifReceivedCount++;
 
@@ -130,6 +132,19 @@ namespace RimWorldAgent.Core.AgentRuntime
             }
             else { _actPauseCheckCount = 0; }
 
+            // ACT 阶段执行过久提醒（无论暂停与否，超过阈值建议重新 PLAN）
+            var actTurnRemind = "";
+            if (AgentOrchestrator.CurrentPhase == GamePhase.Act)
+            {
+                _actTurnCount++;
+                if (_actTurnCount > ActTurnRemindThreshold)
+                {
+                    _actTurnCount = 0;
+                    actTurnRemind = $"\n\n<system-reminder>\n你已在 ACT 阶段连续执行 {ActTurnRemindThreshold}+ 轮工具调用。建议调用 enter_plan() 暂停游戏、审视进度、更新计划，然后再继续执行。\n</system-reminder>";
+                }
+            }
+            else { _actTurnCount = 0; }
+
             // PLAN 阶段停留过久提醒
             var planPauseRemind = "";
             if (AgentOrchestrator.CurrentPhase == GamePhase.Plan)
@@ -172,7 +187,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 notifRemind = "\n\n<system-reminder>\n你有未处理的通知，请用 get_notifications 查看并处理。用 dismiss_notification 关闭不需要的通知。\n</system-reminder>";
             }
 
-            return $"\n\n---\n当前模式: {phase}{taskRemind}{planPauseRemind}{actPauseRemind}{notifRemind}";
+            return $"\n\n---\n当前模式: {phase}{taskRemind}{planPauseRemind}{actPauseRemind}{actTurnRemind}{notifRemind}";
         }
     }
 }
