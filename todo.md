@@ -73,7 +73,36 @@ C# (RimWorld)                       companion (Node.js)
 | C# | ~500行 (CcbWebSocket, Hook_GameDispose, JobObject, 进程扫描) | ~120行 (CompanionStdio, Fleck server) |
 | **净减少** | ~2100行 | |
 
+
+# UI BUS内包含了业务逻辑
+
 # BUG：
-1. dialog中用户发的消息会出现一个系统消息和一个用户消息
-2. 前台发送消息不会打断sdk dialog发送消息会打断sdk
-3.
+1. echo依然没审报销
+2. Dialog中只有token使用 没有命名缓存和额度
+3. 打断后依然没有发送继续
+   [Core] [INFO] [event] game/notification: Combat/Critical: 大威胁 | 袭击: 德奥加 — 来自<color=#FF3333FF>德奥加</color>的多队炎魔种到达附近。
+
+他们会立即开始进攻。
+
+注意：他们似乎异常聪明地采取了战术，会尝试避开炮塔和陷阱。
+[Core] [INFO] [AgentOrchestrator] 中断请求: [Critical/Combat] 大威胁 | 袭击: 德奥加 — 来自德奥加的多队炎魔种到达附近。
+
+他们会立即开始进攻。
+
+注意：他们似乎异常聪明地采取了战术，会尝试避开炮塔和陷阱。
+[Core] [INFO] [ccb] [bridge] [CCGUI_DEBUG] 收到消息 type=abort token=(none)
+[Core] [INFO] [ccb] [bridge] 收到 abort
+[Core] [INFO] [CcbWS] 已发送中断请求
+[Core] [INFO] [ccb] [cc-companion] 加载 Prompt: F:\RiderProjects\RimWorldMCP\RimWorldAgent\bin\Release\cc-companion\Prompt.md
+[Core] [INFO] [ccb] [bridge] 新会话已创建
+[Core] [INFO] [NotisAgent] suffix 注入 (93 字符)
+
+
+
+打断了依然会注入suffix
+
+
+RequestInterrupt → InterruptSummary	下次 prompt 顶部	SDK 内部
+NotisAgent → set_tool_result_suffix	下一个 tool_result 末尾	需等工具调用
+
+可以不要
