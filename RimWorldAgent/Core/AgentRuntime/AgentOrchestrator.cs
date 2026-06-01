@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
+using RimWorldAgent.Core.CcbManager;
 
 namespace RimWorldAgent.Core.AgentRuntime
 {
@@ -24,7 +25,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         public static Mcp.McpClient? SessionMcp { get; set; }
 
         /// <summary>CcbWebSocket 引用（供 NotisAgent 直接发送通知）</summary>
-        public static CcbManager.CcbWebSocket? CcbWs { get; set; }
+        public static CcbWebSocket? CcbWs { get; set; }
 
         /// <summary>状态变化时触发</summary>
         public static event Action<string>? OnStatusChanged;

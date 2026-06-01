@@ -1,34 +1,68 @@
 # RimWorld AI
 
-AI Colony Operating System — 多 Agent 自主管理 RimWorld 殖民地。
+AI Colony Operating System — Claude Agent SDK 自主管理 RimWorld 殖民地。
 
 ## 项目结构
 
 ```
 RimWorldAI/
 ├── SimpleMspServer/          ← MCP 协议共享库 (net472)
-│   ├── McpMessage.cs         JSON-RPC 2.0 类型
-│   ├── ITransport.cs         传输接口
-│   ├── SseTransport.cs       SSE + HTTP 传输
-│   └── StreamableHttpTransport.cs
-│
-├── RimWorldMCP/              ← 游戏 Mod (net472)
-│   ├── Tools/                100+ 游戏 Tool
-│   ├── MCP Server :9877
-│   ├── Harmony/              事件拦截
-│   └── Transport/            StdioTransport
-│
-└── RimWorldAgent/             ← Agent Runtime (net472)
-    ├── Core/                 共享库
-    │   ├── AgentRuntime/     Scheduler + AgentOrchestrator
-    │   ├── Mcp/              MCP 客户端 + Agent MCP Server
-    │   └── CcbManager/       CCB 子进程 + WebSocket
-    ├── Mod/                  MOD 加载模式
-    └── cc-companion/        Node.js CCB 桥接
+│   ├── McpMessage.cs         JSON-RPC 2.0
+│   ├── ITransport.cs         传输抽象
+│   └── SseTransport.cs       SSE + HTTP
 
-三者互不引用：RimWorldMCP ↔ RimWorldAgent 仅通过 MCP 协议通信。
-SimpleMspServer 被两者共同引用。
+├── RimWorldMCP/              ← 游戏 Mod (net472)
+│   ├── Tools/                112 个游戏 Tool
+│   ├── MCP Server :9877      SSE + Streamable HTTP
+│   ├── Harmony/              事件拦截 → NotificationBus
+│   └── Transport/
+
+├── RimWorldAgent/             ← Agent Runtime (net472)
+│   ├── Core/
+│   │   ├── AgentRuntime/     AgentLoop + AgentOrchestrator + ContextBuilder + ToolDispatcher
+│   │   ├── CcbManager/       CCB 子进程 + CcbWebSocket
+│   │   ├── BridgeBus.cs      ★ UI 总线 — Fleck WS :19998，SDK消息广播 + 客户端消息 → CCB
+│   │   ├── Mcp/              MCP 客户端 + Agent MCP Server :9878
+│   │   └── Data/             ★ IDbStore 抽象 — JsonDbStore (EXE) / ScribeDbStore (MOD)
+│   ├── Mod/                  GameComponent + UI + Harmony Hooks
+│   ├── Exe/                  独立 EXE 入口
+│   ├── resource/WebUI/       Web 前端静态文件
+│   └── cc-companion/         Node.js SDK 桥接 (纯 WS, ~358行)
+│
+└── RimWorldAgent.Tests/      C# 测试
+
+四者关系：RimWorldMCP ↔ RimWorldAgent 通过 MCP 协议通信（互不引用）。
+SimpleMspServer 被两者共同引用。Agent → companion 通过 WS :19999。
 ```
+
+## 架构
+
+```
+                      CC Companion (Node.js)
+                           │
+              chat / abort  │  SDK 流式消息
+                           │
+                    CcbWebSocket (C# :19999)
+                      │        │
+            SDK 消息  │        │  chat/abort
+              ↓       │        │     ↓
+         ChatDisplayState    输入经 CCB 转发到 SDK
+              ↓
+         游戏内 Dialog ← UI 线程 DrainEvents
+```
+
+| 端口 | 服务 | 协议 |
+|------|------|------|
+| `:9877` | MCP Server（游戏 Tool） | SSE / HTTP |
+| `:9878` | Agent MCP Server（内部 Tool + Proxy 代理全部游戏 Tool） | HTTP |
+| `:19998` | BridgeBus（UI 总线） | WebSocket |
+| `:19999` | CC Companion（SDK 桥接） | WebSocket |
+
+**关键设计**：
+- **CC Companion** 是纯 SDK 桥接——收 chat/abort，吐 SDK 流式消息
+- **ProxyToolProvider**：游戏 MCP 工具全部代理到 Agent MCP，SDK 只连 `agent` 端点
+- **ChatDisplayState**：WS 后台线程 → EnqueueUiEvent 入队 → UI 线程 DrainEvents 消费
+- **IDbStore + IGameStateProvider**：EXE/MOD 双模抽象，构造注入解耦
 
 ## 构建
 
@@ -37,87 +71,38 @@ cd F:\RiderProjects\RimWorldMCP
 dotnet build RimWorldAI.sln
 ```
 
-5 个子项目，全部 net472，统一编译。
+5 个项目，全部 net472。
 
 ## 开发规范
 
-以下规则适用于**所有子项目**。
+**子项目专属内容见**：[RimWorldMCP](RimWorldMCP/CLAUDE.md) | [RimWorldAgent](RimWorldAgent/CLAUDE.md)
 
-**子项目专属内容见各自 CLAUDE.md**：[RimWorldMCP](RimWorldMCP/CLAUDE.md) | [RimWorldAgent](RimWorldAgent/CLAUDE.md)
+### 异常处理
 
-### 0. 异常处理必须记录详细信息
+**禁止空 catch**。每个 catch 必须记录异常类型和 `ex.Message`。`OperationCanceledException` 允许空 catch。
 
-**任何时候捕获异常都不允许忽略（空 catch / 空 catch(Exception) / `// ignored` 注释）。** 每个 catch 必须：
-- 输出日志，包含异常类型名称、原始报错信息 `ex.Message`
-- 使用合适的日志出口：`CoreLog`（Agent 侧）/ `McpLog` 或 `Log.Warning`/`Log.Error`（MCP 游戏侧）/ `_log`（SimpleMspServer 侧）
-- 格式：`$"[组件标识] 操作描述失败: {ex.GetType().Name}: {ex.Message}"`
-- 涉及外部调用（HTTP、WebSocket、文件 I/O、进程管理）时额外展开 `InnerException` 链
+### 日志
 
-**正确示例：**
-```csharp
-// 简单操作
-catch (Exception ex) { Log.Warning($"[ToolName] 读取数据失败: {ex.Message}"); }
+- **不含敏感信息**：token、密码、密钥不写入日志
+- **调试**：`[CCGUI_DEBUG]` 前缀，解决后 grep 清理
 
-// 外部调用 — 展开完整链
-catch (Exception ex) when (!ct.IsCancellationRequested)
-{
-    var detail = UnwrapException(ex);
-    CoreLog.Error($"[McpClient] SSE 断开: {detail}");
-}
+### 设计文档
 
-static string UnwrapException(Exception ex)
-{
-    var sb = new StringBuilder();
-    while (ex != null)
-    {
-        if (sb.Length > 0) sb.Append(" → ");
-        sb.Append($"{ex.GetType().Name}: {ex.Message}");
-        ex = ex.InnerException;
-    }
-    return sb.ToString();
-}
-```
-
-**错误示例：**
-```csharp
-try { DoSomething(); } catch { }                 // 禁止
-try { DoSomething(); } catch (Exception) { }      // 禁止
-catch { /* ignored */ }                            // 禁止
-catch (Exception) { /* ignored */ }                // 禁止
-```
-
-**允许的精简场景**：`OperationCanceledException` — 异步取消，保留空 catch，日志可选。
-
-### 1. 日志安全
-
-- **不输出敏感信息**：token、密码、密钥、用户隐私数据不写入日志
-- **线程安全**：后台线程（HttpListener、WebSocket ReceiveLoop、子进程 stdout）禁止直接调用 `Verse.Log.*`，必须通过 `McpLog`（MCP 侧）或 `SafeLog`（Agent 侧）入队 → 主线程 `GameComponentUpdate` 中 Flush 写入
-- **调试日志**：临时调试用 `[CCGUI_DEBUG]` 前缀，问题解决后 grep 一次性清理
-
-### 2. 技术设计文档必须写入 design/ 目录
-
-凡是涉及架构决策、实现模式、多个文件协同配合的技术细节，必须在 `design/` 目录中建立对应的 `.md` 文件。修改了相关代码后，必须同步更新设计文档和 CLAUDE.md。
-
-- 聚焦 **WHY**（设计理由）和 **HOW**（实现模式），不重复代码
-- 每个设计文档对应一个子系统
-- CLAUDE.md 保留概述和指向设计文档的引用，避免膨胀
-
-**design/ 文档索引**：
+见 `design/` 目录。
 
 | 文档 | 内容 |
 |------|------|
-| `design/camera-system.md` | 摄像头自动移动：GetTargetRange 接口、缩放规则、7 种实现模式、线程安全、实体查找 |
-| `design/bridge-lifecycle.md` | CC Companion 桥接：连接流程、进程清理三层保障、MessageBus 双总线、参数覆盖顺序 |
-| `design/tool-system.md` | Tool 系统：ITool 接口、ToolRegistry 反射注册、执行流程、线程模型、McpCommandQueue |
-| `design/event-system.md` | 事件系统：Harmony 拦截、四级分级响应、事件驱动暂停、AutoPauseGuard |
-| `design/token-budget-system.md` | Token 预算：三档检查、Block/Warn 超限行为、UI 展示、Webhook 通知 |
-| `design/mcp-server-integration.md` | MCP Server 集成：SDK 接入方式、per-session 架构、响应清洗、通知通道、net472 适配、CLI 测试 |
-| `design/agent-runtime.md` | Agent Runtime：Scheduler、单 Commander 架构、Context Builder、中断机制 |
-| `design/tool-result-suffix.md` | Tool Result Suffix：双工通知机制，一次性 suffix 追加到下一次工具结果后自动清空 |
+| `design/camera-system.md` | 摄像头自动移动 |
+| `design/bridge-lifecycle.md` | CCB 生命周期 |
+| `design/tool-system.md` | Tool 系统 |
+| `design/event-system.md` | 事件系统 |
+| `design/token-budget-system.md` | Token 预算 |
+| `design/mcp-server-integration.md` | MCP Server 集成 |
+| `design/agent-runtime.md` | Agent Runtime |
+| `design/tool-result-suffix.md` | Tool Result Suffix |
 
-### 3. 提交规范
+### 提交
 
-- git commit 信息使用简体中文，遵循 Conventional Commits 格式（如 `feat(agent): 添加XX功能`）
-- 提交前检查 diff 中的敏感信息（token、密码、密钥、内网地址）
-- 检查日志输出是否可能泄露敏感数据
-- 未经用户明确允许不得提交代码
+- commit 信息简体中文，Conventional Commits 格式
+- 提交前检查 diff：敏感信息 + `[CCGUI_DEBUG]` 残留
+- 未经允许不提交
