@@ -82,6 +82,9 @@ namespace RimWorldAgent.Core
         /// <summary>SDK 工具结果，(toolId, isError, content)</summary>
         public static event Action<string, bool, string>? OnToolResultRecorded;
 
+        /// <summary>新客户端连接，(socket)</summary>
+        public static event Action<IWebSocketConnection>? OnClientConnected;
+
         public static void RaiseChat(string text, ChatThinking? thinking = null) => OnChat?.Invoke(text, thinking);
         public static void RaiseAbort() => OnAbort?.Invoke();
         public static void RaiseAssistantContent(string text, string thinking, string runId, string agentType)
@@ -104,6 +107,7 @@ namespace RimWorldAgent.Core
                 {
                     _clients[id] = socket;
                     CoreLog.Info($"[UIMessageBus] 客户端已连接: {socket.ConnectionInfo.ClientIpAddress} id={id} 总数={_clients.Count}");
+                    OnClientConnected?.Invoke(socket);
                 };
                 socket.OnClose = () =>
                 {
@@ -164,6 +168,7 @@ namespace RimWorldAgent.Core
             OnHistoryBefore = null;
             OnToolCallRecorded = null;
             OnToolResultRecorded = null;
+            OnClientConnected = null;
             if (_server == null) return;
             foreach (var kv in _clients) { try { kv.Value.Close(); } catch { } }
             _clients.Clear();

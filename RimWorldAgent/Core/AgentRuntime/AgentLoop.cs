@@ -49,6 +49,25 @@ namespace RimWorldAgent.Core.AgentRuntime
             // 客户端 abort → CCB
             UIMessageBus.OnAbort += async () => await ws.SendAbort();
 
+            // 新客户端连接 → 推送初始状态
+            UIMessageBus.OnClientConnected += socket =>
+            {
+                try
+                {
+                    var status = AgentOrchestrator.StatusText;
+                    socket.Send(UiMessage.AgentStatus(status).ToJson());
+                }
+                catch { }
+                try
+                {
+                    socket.Send(UiMessage.BudgetStatus(
+                        TokenUsageTracker.TotalAllTokens, BudgetLimit, "Idle",
+                        TokenUsageTracker.TotalCacheReadTokens, TokenUsageTracker.TotalInputTokens,
+                        TokenUsageTracker.TotalCacheCreateTokens).ToJson());
+                }
+                catch { }
+            };
+
             // 客户端 history → 返回历史消息
             UIMessageBus.OnHistory += (socket, n) =>
             {
@@ -112,6 +131,15 @@ namespace RimWorldAgent.Core.AgentRuntime
                     TokenUsageTracker.TotalCacheReadTokens, TokenUsageTracker.TotalInputTokens, TokenUsageTracker.TotalCacheCreateTokens));
             };
 
+            // 初始推送：budget 起始状态
+            PushInitialBudget();
+
+            // 阶段变化 → agent-status 广播
+            AgentOrchestrator.OnStatusChanged += status =>
+            {
+                UIMessageBus.PushUiMessage(UiMessage.AgentStatus(status));
+            };
+
             // 系统/错误消息 → 录制
             UIMessageBus.OnDisplayMessage += json =>
             {
@@ -135,6 +163,14 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
                 catch { /* best-effort，不影响显示管线 */ }
             };
+        }
+
+        private static void PushInitialBudget()
+        {
+            UIMessageBus.PushUiMessage(UiMessage.BudgetStatus(
+                TokenUsageTracker.TotalAllTokens, BudgetLimit, "Idle",
+                TokenUsageTracker.TotalCacheReadTokens, TokenUsageTracker.TotalInputTokens,
+                TokenUsageTracker.TotalCacheCreateTokens));
         }
 
         /// <summary>MCP 游戏事件 → 所有通知都触发中断</summary>

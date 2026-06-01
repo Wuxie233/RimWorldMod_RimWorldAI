@@ -22,6 +22,7 @@ namespace RimWorldAgent.Core
         public static UiSystem System(string text) => new UiSystem(text);
         public static UiBudgetStatus BudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate)
             => new UiBudgetStatus(used, limit, action, cacheRead, totalInput, cacheCreate);
+        public static UiAgentStatus AgentStatus(string role) => new UiAgentStatus(role);
     }
 
     // ===== 具体消息类型（与 WS 协议 JSON 字段对齐） =====
@@ -120,5 +121,12 @@ namespace RimWorldAgent.Core
         public long cacheCreate { get; }
         public UiBudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate)
         { this.used = used; this.limit = limit; this.action = action; this.cacheRead = cacheRead; this.totalInput = totalInput; this.cacheCreate = cacheCreate; }
+    }
+
+    public class UiAgentStatus : UiMessage
+    {
+        public string type => "agent-status";
+        public string role { get; }
+        public UiAgentStatus(string role) { this.role = role; }
     }
 }
