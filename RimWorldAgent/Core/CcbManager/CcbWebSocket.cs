@@ -206,7 +206,6 @@ public class CcbWebSocket : IDisposable
         try
         {
             var msg = SdkMessage.FromJson(json);
-            CoreLog.Info($"[CCGUI_DEBUG] ProcessMessage type={msg.Type}");
             OnSdkMessage?.Invoke(msg);
 
             // 内部事件分发（用类型化 SdkMessage）

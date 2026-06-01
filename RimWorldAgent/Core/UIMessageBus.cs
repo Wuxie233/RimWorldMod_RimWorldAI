@@ -26,7 +26,6 @@ namespace RimWorldAgent.Core
         /// <summary>推送 UiMessage 列表 — 序列化 + WS 广播 + 本地回调</summary>
         public static void PushUiMessages(List<UiMessage> messages)
         {
-            CoreLog.Info($"[CCGUI_DEBUG] UIMessageBus.PushUiMessages count={messages.Count} _clients={_clients.Count}");
             foreach (var msg in messages)
             {
                 var json = msg.ToJson();
@@ -46,7 +45,6 @@ namespace RimWorldAgent.Core
         public static void PushUiMessage(UiMessage msg)
         {
             var json = msg.ToJson();
-            CoreLog.Info($"[CCGUI_DEBUG] UIMessageBus.PushUiMessage _clients={_clients.Count} preview={json.Substring(0, Math.Min(json.Length, 120))}");
             foreach (var kv in _clients)
             {
                 try { kv.Value.Send(json); }
