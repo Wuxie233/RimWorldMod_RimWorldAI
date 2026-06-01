@@ -248,7 +248,12 @@ namespace RimWorldAgent.Core.AgentRuntime
                     {
                         await _gameState.SyncGameStatusAsync();
                         _logInfo($"[AgentEngine] 游戏已就绪 (Tick={_gameState.GameTick})");
-                        await RunAgent(isPlan: false);
+                        // 新游戏默认进入 PLAN + 暂停，让 AI 先了解情况再行动
+                        AgentOrchestrator.EnterPlanPhase();
+                        if (AgentOrchestrator.PaceController == null)
+                            AgentOrchestrator.PaceController = new GamePaceController();
+                        await AgentOrchestrator.PaceController.PauseForPlanning(_mcp, GamePaceController.PlanSpeed);
+                        await RunAgent(isPlan: true);
                         _logInfo($"[AgentEngine] 冷启动完成 (Day={_gameState.GameDay})");
                         return;
                     }
