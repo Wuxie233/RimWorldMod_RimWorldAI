@@ -17,18 +17,28 @@ namespace RimWorldAgent.Core.Data
         /// <summary>将条目列表格式化为 WS history_response JSON 字符串</summary>
         public static string FormatResponse(IReadOnlyList<ConversationEntry> entries)
         {
-            var doc = BuildResponseDocument(entries);
+            var doc = BuildResponseDocument(entries, "history_response");
             return JsonSerializer.Serialize(doc, Options);
         }
 
-        private static object BuildResponseDocument(IReadOnlyList<ConversationEntry> entries)
+        /// <summary>将更早的消息格式化为 WS history_before_response JSON 字符串</summary>
+        public static string FormatBeforeResponse(IReadOnlyList<ConversationEntry> entries, bool hasMore)
+        {
+            var messages = new List<object>(entries.Count);
+            foreach (var entry in entries)
+                messages.Add(FormatEntry(entry));
+            var doc = new { type = "history_before_response", messages, has_more = hasMore };
+            return JsonSerializer.Serialize(doc, Options);
+        }
+
+        private static object BuildResponseDocument(IReadOnlyList<ConversationEntry> entries, string responseType)
         {
             var messages = new List<object>(entries.Count);
             foreach (var entry in entries)
             {
                 messages.Add(FormatEntry(entry));
             }
-            return new { type = "history_response", messages };
+            return new { type = responseType, messages };
         }
 
         private static object FormatEntry(ConversationEntry entry)
@@ -51,6 +61,7 @@ namespace RimWorldAgent.Core.Data
             return new
             {
                 type = contentType,
+                id = entry.Id,
                 uuid = string.IsNullOrEmpty(entry.RunId) ? $"msg_{entry.Id}" : entry.RunId,
                 agent_type = entry.AgentType ?? "",
                 message = new { content }

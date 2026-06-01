@@ -132,6 +132,30 @@ namespace RimWorldAgent.Core.Data
             }
         }
 
+        public IReadOnlyList<ConversationEntry> GetBefore(long beforeId, int n)
+        {
+            if (_disposed) return Array.Empty<ConversationEntry>();
+            try
+            {
+                using var conn = OpenConnection();
+                using var cmd = new SQLiteCommand(
+                    "SELECT id, role, text, thinking, run_id, agent_type, timestamp FROM conversation WHERE id < @beforeId ORDER BY id DESC LIMIT @n", conn);
+                cmd.Parameters.AddWithValue("@beforeId", beforeId);
+                cmd.Parameters.AddWithValue("@n", Math.Max(1, n));
+                var list = new List<ConversationEntry>();
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    list.Add(ReadEntry(reader));
+                list.Reverse();
+                return list;
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Warn($"[SqliteConvStore] GetBefore({beforeId}, {n}) 失败: {ex.Message}");
+                return Array.Empty<ConversationEntry>();
+            }
+        }
+
         private static ConversationEntry ReadEntry(SQLiteDataReader reader)
         {
             return new ConversationEntry

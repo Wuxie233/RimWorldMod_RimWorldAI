@@ -1018,20 +1018,52 @@
       currentStreamAgent = null;
       hasStreamedText = false;
       toolStartTimes = {};
+      oldestId = 0;
+      hasMoreOlder = false;
       var msgs = msg.messages || [];
       for (var i = 0; i < msgs.length; i++) {
         var m = msgs[i];
         if (m.type === 'assistant' || m.type === 'user') {
           if (m.uuid) seenUuids[m.uuid] = true;
           addMsgSimple(m);
+          if (!oldestId || m.id < oldestId) oldestId = m.id;
         }
       }
+      // 历史 >= N 条时标记 hasMoreOlder，启动向上滚动加载
+      hasMoreOlder = msgs.length >= 30;
       scrollDeferred();
       loadingHistory = false;
       if (pendingWs.length) {
         var queued = pendingWs.splice(0);
         for (var k = 0; k < queued.length; k++) handleMessage(queued[k]);
       }
+      return;
+    }
+
+    // history_before_response 也必须绕过 loadingHistory 守卫（异步加载）
+    if (msg.type === 'history_before_response') {
+      var bmsgs = msg.messages || [];
+      if (!bmsgs.length) { loadingOlder = false; hasMoreOlder = false; return; }
+      var prevHeight = messagesEl.scrollHeight;
+      var realEl = messagesEl;
+      var tmp = document.createElement('div');
+      messagesEl = tmp;  // 临时重定向 panel builders
+      for (var bi = 0; bi < bmsgs.length; bi++) {
+        var bm = bmsgs[bi];
+        if (bm.type === 'assistant' || bm.type === 'user') {
+          if (bm.uuid) seenUuids[bm.uuid] = true;
+          addMsgSimple(bm);
+          if (!oldestId || bm.id < oldestId) oldestId = bm.id;
+        }
+      }
+      messagesEl = realEl;  // 恢复
+      var bFrag = document.createDocumentFragment();
+      while (tmp.firstChild) bFrag.appendChild(tmp.firstChild);
+      messagesEl.insertBefore(bFrag, messagesEl.firstChild);
+      // 维持滚动位置：补齐上方新增内容的高度
+      messagesEl.scrollTop = messagesEl.scrollHeight - prevHeight;
+      hasMoreOlder = bmsgs.length >= 30;
+      loadingOlder = false;
       return;
     }
 
@@ -1563,6 +1595,8 @@
     clearTimeout(scrollEventTimer);
     scrollEventTimer = setTimeout(function() {
       var diff = messagesEl.scrollHeight - messagesEl.clientHeight - messagesEl.scrollTop;
+      // 向上滚动到顶部 → 加载更早历史
+      if (messagesEl.scrollTop < 80) { loadOlder(); }
       if (userScrolledUp) {
         // 已断磁：检查是否滚回底部，自动恢复磁吸
         if (diff < SNAP_THRESHOLD) {
@@ -1601,8 +1635,17 @@
 
   // ===== History =====
   var loadingHistory = false;
+  var loadingOlder = false;
+  var hasMoreOlder = false;
+  var oldestId = 0;
   var pendingWs = [];
   var seenUuids = {};
+
+  function loadOlder() {
+    if (loadingOlder || !hasMoreOlder || !oldestId) return;
+    loadingOlder = true;
+    ws.send(JSON.stringify({ type: 'history_before', before_id: oldestId, n: 30 }));
+  }
 
   function loadHistory() {
     if (loadingHistory) return;

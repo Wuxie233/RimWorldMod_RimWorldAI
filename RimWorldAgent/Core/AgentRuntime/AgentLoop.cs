@@ -67,6 +67,25 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
             };
 
+            // 客户端 history_before → 返回更早的消息（向上滚动加载）
+            UIMessageBus.OnHistoryBefore += (socket, beforeId, n) =>
+            {
+                try
+                {
+                    var store = ConversationStore;
+                    if (store == null) return;
+                    var entries = store.GetBefore(beforeId, n);
+                    var hasMore = entries.Count >= n;
+                    var json = UiHistoryFormatter.FormatBeforeResponse(entries, hasMore);
+                    socket.Send(json);
+                }
+                catch (Exception ex)
+                {
+                    CoreLog.Warn($"[AgentLoop] 历史翻页失败: {ex.Message}");
+                    try { socket.Send(UiMessage.Error($"历史翻页失败: {ex.Message}").ToJson()); } catch { }
+                }
+            };
+
             // SDK assistant 完整内容 → 录制
             UIMessageBus.OnAssistantContent += (text, thinking, runId, agentType) =>
             {

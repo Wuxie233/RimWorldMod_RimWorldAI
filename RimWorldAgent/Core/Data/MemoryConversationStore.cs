@@ -75,6 +75,18 @@ namespace RimWorldAgent.Core.Data
             }
         }
 
+        public IReadOnlyList<ConversationEntry> GetBefore(long beforeId, int n)
+        {
+            lock (_lock)
+            {
+                // 找到 beforeId 的位置，取其之前的 n 条
+                var idx = _entries.FindIndex(e => e.Id == beforeId);
+                if (idx <= 0) return new List<ConversationEntry>();
+                var start = Math.Max(0, idx - n);
+                return _entries.GetRange(start, idx - start);
+            }
+        }
+
         private long GetNextId()
         {
             lock (_lock) return _nextId++;

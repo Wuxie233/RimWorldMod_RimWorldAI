@@ -25,5 +25,8 @@ namespace RimWorldAgent.Core.Data
 
         /// <summary>获取最近 n 条（按时间升序）</summary>
         IReadOnlyList<ConversationEntry> GetRecent(int n);
+
+        /// <summary>获取指定 ID 之前的 n 条（按时间升序），用于向上滚动加载更早消息</summary>
+        IReadOnlyList<ConversationEntry> GetBefore(long beforeId, int n);
     }
 }

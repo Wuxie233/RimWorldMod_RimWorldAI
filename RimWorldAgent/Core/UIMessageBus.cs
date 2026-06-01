@@ -70,6 +70,9 @@ namespace RimWorldAgent.Core
         /// <summary>客户端请求历史记录，(socket, 请求条数 n)</summary>
         public static event Action<IWebSocketConnection, int>? OnHistory;
 
+        /// <summary>客户端请求更早的消息，(socket, beforeId, n)</summary>
+        public static event Action<IWebSocketConnection, long, int>? OnHistoryBefore;
+
         /// <summary>SDK assistant 消息完整内容，(text, thinking, runId, agentType)</summary>
         public static event Action<string, string, string, string>? OnAssistantContent;
 
@@ -126,6 +129,13 @@ namespace RimWorldAgent.Core
                                 OnHistory?.Invoke(socket, n);
                                 break;
                             }
+                            case "history_before":
+                            {
+                                var beforeId = root.TryGetProperty("before_id", out var bid) && bid.TryGetInt64(out var bv) ? bv : 0L;
+                                var nb = root.TryGetProperty("n", out var nEl2) && nEl2.TryGetInt32(out var nv2) ? Math.Min(nv2, 200) : 30;
+                                OnHistoryBefore?.Invoke(socket, beforeId, nb);
+                                break;
+                            }
                         }
                     }
                     catch (Exception ex) { CoreLog.Info($"[UIMessageBus] 消息解析失败: {ex.Message}"); }
@@ -141,6 +151,7 @@ namespace RimWorldAgent.Core
             OnDisplayMessage = null;
             OnHistory = null;
             OnAssistantContent = null;
+            OnHistoryBefore = null;
             if (_server == null) return;
             foreach (var kv in _clients) { try { kv.Value.Close(); } catch { } }
             _clients.Clear();
