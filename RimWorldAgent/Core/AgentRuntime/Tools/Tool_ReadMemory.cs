@@ -8,7 +8,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
     public class Tool_ReadMemory : IInternalTool
     {
         public string Name => "read_memory";
-        public string Description => "读取殖民地记忆文件 (CLAUDE.md)，查看历史经验和已知信息。";
+        public string Description => "读取殖民地记忆文件，查看历史经验和已知信息。";
 
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {

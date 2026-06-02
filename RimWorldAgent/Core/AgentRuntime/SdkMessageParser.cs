@@ -93,19 +93,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             }
 
             // 提取 runId 和 agentType 用于录制
-            var runId = "";
-            var agentType = "";
-            try
-            {
-                using var doc = JsonDocument.Parse(msg.RawJson);
-                var root = doc.RootElement;
-                // companion bridge 包装：先解 event.payload
-                if (root.TryGetProperty("event", out var _))
-                    root = root.TryGetProperty("payload", out var pl) ? pl : root;
-                runId = root.TryGetProperty("uuid", out var u) ? u.GetString() ?? "" : "";
-                agentType = root.TryGetProperty("parent_tool_use_id", out var pt) ? pt.GetString() ?? "" : "";
-            }
-            catch { /* best-effort */ }
+            var runId = msg.Uuid ?? "";
+            var agentType = msg.ParentToolUseId ?? "";
 
             var finalText = textAccum.ToString();
             var finalThinking = thinkingAccum.ToString();

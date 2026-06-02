@@ -153,7 +153,7 @@ namespace RimWorldAgent
             _dbStore?.ScribeExpose();
         }
 
-        private void ShutdownEngine()
+        public void ShutdownEngine()
         {
             try
             {
@@ -170,6 +170,8 @@ namespace RimWorldAgent
                     CoreLog.Info("[agent-mod] Agent 和 CCB 已关闭");
                 }
                 catch (Exception ex) { CoreLog.Error($"[agent-mod] 关闭 Agent 失败: {ex.Message}"); }
+                try { CcbManager.KillStaleProcesses(); }
+                catch (Exception ex) { Log.Warning($"[agent-mod] KillStaleProcesses 异常: {ex.Message}"); }
             }
             catch (Exception ex)
             {

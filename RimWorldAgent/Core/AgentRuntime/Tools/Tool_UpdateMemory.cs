@@ -12,7 +12,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
     public class Tool_UpdateMemory : IInternalTool
     {
         public string Name => "update_memory";
-        public string Description => "更新殖民地记忆文件 (CLAUDE.md)。可新增章节、替换章节、追加条目。";
+        public string Description => "更新殖民地记忆文件。可新增章节、替换章节、追加条目。";
 
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {

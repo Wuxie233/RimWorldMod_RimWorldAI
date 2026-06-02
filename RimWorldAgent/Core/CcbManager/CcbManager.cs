@@ -51,11 +51,13 @@ namespace RimWorldAgent.Core.CcbManager
             }
 
             // 进程残留清理：先按进程名扫描（最可靠），再按 PID 文件（备份）
-            KillStaleByProcessScan();
-            KillStaleByPidFile();
+            KillStaleProcesses();
+            KillStaleByPidFile(_companionDir);
+            System.Threading.Thread.Sleep(500);
 
             Directory.CreateDirectory(_projectPath);
 
+            var mcpJsonPath = Path.Combine(_projectPath, ".mcp.json");
             var mcpConfig = new
             {
                 mcpServers = new
@@ -64,7 +66,7 @@ namespace RimWorldAgent.Core.CcbManager
                 }
             };
             var mcpJson = System.Text.Json.JsonSerializer.Serialize(mcpConfig, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(Path.Combine(_projectPath, ".mcp.json"), mcpJson);
+            File.WriteAllText(mcpJsonPath, mcpJson);
 
             var args = $"--import tsx/esm companion/companion.ts"
                 + $" --idle-timeout 30000"
@@ -188,8 +190,8 @@ namespace RimWorldAgent.Core.CcbManager
 
         public void Dispose() => Stop();
 
-        /// <summary>通过进程列表扫描杀旧 CCB（不依赖 .pid 文件）</summary>
-        private void KillStaleByProcessScan()
+        /// <summary>按进程名扫描杀所有 CCB 残留进程（public static，可被 Harmony 等外部调用）</summary>
+        public static void KillStaleProcesses()
         {
             try
             {
@@ -204,7 +206,7 @@ namespace RimWorldAgent.Core.CcbManager
                         var fileName = proc.MainModule?.FileName ?? "";
                         if (fileName.IndexOf("cc-companion", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
-                            CoreLog.Info($"[CcbManager] 发现残留 CCB 进程 PID={proc.Id} path={fileName}");
+                            CoreLog.Info($"[CcbManager] Kill CCB 残留进程 PID={proc.Id} path={fileName}");
                             proc.Kill();
                             proc.WaitForExit(3000);
                             killed++;
@@ -213,28 +215,15 @@ namespace RimWorldAgent.Core.CcbManager
                     catch (Exception ex) { CoreLog.Info($"[CcbManager] 扫描进程 {proc.Id} 失败: {ex.Message}"); }
                     finally { proc.Dispose(); }
                 }
-                if (killed > 0) CoreLog.Info($"[CcbManager] 进程扫描清理完成: 已杀 {killed} 个残留 CCB");
+                if (killed > 0) CoreLog.Info($"[CcbManager] 进程扫描完成: 已杀 {killed} 个残留 CCB");
             }
             catch (Exception ex) { CoreLog.Info($"[CcbManager] 进程扫描异常: {ex.Message}"); }
         }
 
-        // ========== PID 残留清理 ==========
-
-        private void WritePidFile(int pid)
+        /// <summary>按 .pid 文件杀指定 companionDir 的 CCB 进程（public static）</summary>
+        public static void KillStaleByPidFile(string companionDir)
         {
-            try { File.WriteAllText(Path.Combine(_companionDir, ".pid"), pid.ToString()); }
-            catch (Exception ex) { CoreLog.Info($"[CcbManager] 写 PID 文件失败: {ex.Message}"); }
-        }
-
-        private void DeletePidFile()
-        {
-            try { File.Delete(Path.Combine(_companionDir, ".pid")); }
-            catch (Exception ex) { CoreLog.Info($"[CcbManager] 删除 PID 文件失败: {ex.Message}"); }
-        }
-
-        private void KillStaleByPidFile()
-        {
-            var pidFile = Path.Combine(_companionDir, ".pid");
+            var pidFile = Path.Combine(companionDir, ".pid");
             if (!File.Exists(pidFile)) return;
 
             try
@@ -255,6 +244,18 @@ namespace RimWorldAgent.Core.CcbManager
             }
             catch (Exception ex) { CoreLog.Error($"[CcbManager] PID 清理失败: {ex.Message}"); }
             finally { try { File.Delete(pidFile); } catch (Exception ex) { CoreLog.Info($"[CcbManager] 删除 PID 文件失败: {ex.Message}"); } }
+        }
+
+        private void WritePidFile(int pid)
+        {
+            try { File.WriteAllText(Path.Combine(_companionDir, ".pid"), pid.ToString()); }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 写 PID 文件失败: {ex.Message}"); }
+        }
+
+        private void DeletePidFile()
+        {
+            try { File.Delete(Path.Combine(_companionDir, ".pid")); }
+            catch (Exception ex) { CoreLog.Info($"[CcbManager] 删除 PID 文件失败: {ex.Message}"); }
         }
 
         private static bool IsNodeProcess(Process proc)

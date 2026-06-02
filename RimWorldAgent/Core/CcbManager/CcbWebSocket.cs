@@ -56,7 +56,7 @@ public class CcbWebSocket : IDisposable
     /// <summary>收到中断确认</summary>
     public event Action? OnAborted;
     /// <summary>收到系统通知（中断摘要）</summary>
-    public event Action<string>? OnSystemNotification;
+
     /// <summary>SDK 消息（已解析），供 AgentCore 消费</summary>
     public event Action<SdkMessage>? OnSdkMessage;
 
@@ -266,8 +266,6 @@ public class CcbWebSocket : IDisposable
                     break;
 
                 case SdkUnknownMessage unk:
-                    if (unk.Type == "system-notification")
-                        OnSystemNotification?.Invoke(unk.Root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "");
                     break;
             }
         }
