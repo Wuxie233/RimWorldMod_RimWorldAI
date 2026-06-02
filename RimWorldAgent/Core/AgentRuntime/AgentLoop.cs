@@ -63,7 +63,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     var status = AgentOrchestrator.StatusText;
                     socket.Send(UiMessage.AgentStatus(status).ToJson());
                 }
-                catch { }
+                catch (Exception ex) { CoreLog.Warn($"[AgentLoop] 推送 agent-status 失败: {ex.GetType().Name}: {ex.Message}"); }
                 try
                 {
                     socket.Send(UiMessage.BudgetStatus(
@@ -72,12 +72,18 @@ namespace RimWorldAgent.Core.AgentRuntime
                         TokenUsageTracker.TotalCacheCreateTokens, TokenUsageTracker.CurrentContextWindow,
                         TokenUsageTracker.CurrentInputTokens).ToJson());
                 }
-                catch { }
+                catch (Exception ex) { CoreLog.Warn($"[AgentLoop] 推送 budget_status 失败: {ex.GetType().Name}: {ex.Message}"); }
                 try
                 {
                     socket.Send(UiMessage.CompactionStatus(AgentOrchestrator.IsCompacting).ToJson());
                 }
-                catch { }
+                catch (Exception ex) { CoreLog.Warn($"[AgentLoop] 推送 compaction-status 失败: {ex.GetType().Name}: {ex.Message}"); }
+                try
+                {
+                    if (UIMessageBus.LastSystemInit != null)
+                        socket.Send(UIMessageBus.LastSystemInit.ToJson());
+                }
+                catch (Exception ex) { CoreLog.Warn($"[AgentLoop] 推送 system_init 失败: {ex.GetType().Name}: {ex.Message}"); }
             };
 
             // 客户端 history → 返回历史消息

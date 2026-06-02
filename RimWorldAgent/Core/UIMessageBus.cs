@@ -21,6 +21,9 @@ namespace RimWorldAgent.Core
         public static bool IsRunning => _server != null;
         public static bool IsReady { get; set; }
 
+        /// <summary>最近一次 system_init 消息缓存（新客户端连接时重发）</summary>
+        public static UiSystemInit? LastSystemInit;
+
         // ===== 上游：AgentCore → UIMessageBus → UI =====
 
         /// <summary>推送 UiMessage 列表 — 序列化 + WS 广播 + 本地回调</summary>
@@ -28,6 +31,7 @@ namespace RimWorldAgent.Core
         {
             foreach (var msg in messages)
             {
+                if (msg is UiSystemInit si) LastSystemInit = si;
                 var json = msg.ToJson();
                 foreach (var kv in _clients)
                 {
@@ -168,7 +172,7 @@ namespace RimWorldAgent.Core
             OnToolResultRecorded = null;
             OnClientConnected = null;
             if (_server == null) return;
-            foreach (var kv in _clients) { try { kv.Value.Close(); } catch { } }
+            foreach (var kv in _clients) { try { kv.Value.Close(); } catch (Exception ex) { CoreLog.Info($"[UIMessageBus] 关闭客户端连接失败: {ex.Message}"); } }
             _clients.Clear();
             _server.Dispose();
             _server = null;
