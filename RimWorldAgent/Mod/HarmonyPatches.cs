@@ -14,10 +14,6 @@ namespace RimWorldAgent
 
         static HarmonyPatches()
         {
-            // 纯日志：验证调用时机
-            TryPatch(typeof(Game), "DeinitAndRemoveMap", nameof(Postfix_DeinitAndRemoveMap));
-
-            // 主功能：退出存档时 Kill CCB
             TryPatch(typeof(Verse.Profile.MemoryUtility), "ClearAllMapsAndWorld", nameof(Postfix_ClearAllMapsAndWorld));
         }
 
@@ -40,13 +36,6 @@ namespace RimWorldAgent
             {
                 Log.Error($"[agent-harmony] Patch {targetType.FullName}.{methodName} 失败: {ex.GetType().Name}: {ex.Message}");
             }
-        }
-
-        // ===== 回调方法 =====
-
-        public static void Postfix_DeinitAndRemoveMap()
-        {
-            Log.Message("[agent-harmony] Game.DeinitAndRemoveMap 被调用");
         }
 
         public static void Postfix_ClearAllMapsAndWorld()
