@@ -285,8 +285,6 @@ namespace RimWorldAgent.Core.AgentRuntime
             async void OnToolUse(string toolId, string toolName, string input)
             {
                 NoteActivity();
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var isError = false;
                 Interlocked.Increment(ref pendingTools);
                 try
                 {
@@ -294,19 +292,14 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
                 catch (Exception ex)
                 {
-                    isError = true;
                     CoreLog.Error($"[commander] Tool 执行异常: {ex.Message}");
                 }
                 finally
                 {
-                    sw.Stop();
                     var remaining = Interlocked.Decrement(ref pendingTools);
                     if (remaining == 0 && resultReceived)
                         tcs.TrySetResult(true);
                 }
-                // 暂存耗时，等待 SDK echo (tool_result content) 后合并落盘
-                _toolDurations[toolId] = sw.Elapsed.TotalMilliseconds;
-                CoreLog.Info($"[commander] Tool 完成: {toolName} 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms isError={isError}");
             }
 
             void OnExit()

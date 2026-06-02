@@ -53,6 +53,7 @@ namespace RimWorldAgent.Core.AgentRuntime
 
         async Task<MspToolCallResult> SimpleMspServer.Mcp.IToolProvider.ExecuteAsync(string name, JsonElement? args)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var dict = args != null
@@ -60,6 +61,9 @@ namespace RimWorldAgent.Core.AgentRuntime
                     : null;
                 var result = await _mcp.CallTool(name, dict);
                 var suffix = await ToolDispatcher.BuildModeSuffixAsync();
+
+                sw.Stop();
+                CoreLog.Info($"[ProxyToolProvider] {name} 完成 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms");
 
                 return new MspToolCallResult
                 {
@@ -71,7 +75,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             }
             catch (Exception ex)
             {
-                CoreLog.Error($"[ProxyToolProvider] 工具 {name} 代理失败: {ex.Message}");
+                sw.Stop();
+                CoreLog.Error($"[ProxyToolProvider] {name} 失败 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms: {ex.Message}");
                 return new MspToolCallResult
                 {
                     IsError = true,
