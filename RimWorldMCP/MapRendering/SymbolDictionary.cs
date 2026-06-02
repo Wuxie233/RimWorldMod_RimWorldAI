@@ -319,7 +319,7 @@ namespace RimWorldMCP.MapRendering
                             break;
                         }
                     }
-                    catch (Exception ex) { Log.Warning($"[SymbolDictionary] 规则匹配失败 ({def.defName}): {ex.Message}"); }
+                    catch (Exception ex) { McpLog.Warn($"[SymbolDictionary] 规则匹配失败 ({def.defName}): {ex.Message}"); }
                 }
             }
 

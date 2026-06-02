@@ -106,7 +106,7 @@ namespace RimWorldMCP.Harmony
                 });
                 SimpleMspServer.McpServiceHost.Instance?.SendEvent("game/notification", sseJson);
             }
-            catch (Exception ex) { Log.Warning($"[NotificationBus] SSE 推送失败: {ex.Message}"); }
+            catch (Exception ex) { McpLog.Warn($"[NotificationBus] SSE 推送失败: {ex.Message}"); }
         }
 
         /// <summary>事件等级判定 — 统一入口</summary>

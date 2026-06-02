@@ -107,11 +107,11 @@ namespace RimWorldAgent
                 }
                 else
                 {
-                    Log.Warning("[agent-mod] CcbWs 为 null，UI 总线未启动");
+                    SafeLog.Warning("[agent-mod] CcbWs 为 null，UI 总线未启动");
                 }
 
                 _lastTick = 0;
-                Log.Message("[agent-mod] Agent Runtime 初始化完成");
+                SafeLog.Info("[agent-mod] Agent Runtime 初始化完成");
             }
             catch (Exception ex)
             {
@@ -119,7 +119,7 @@ namespace RimWorldAgent
                 sb.AppendLine($"[agent-mod] InitAgentRuntime 异常:");
                 for (var e = ex; e != null; e = e.InnerException)
                     sb.AppendLine($"  [{e.GetType().Name}] {e.Message}\n{e.StackTrace}");
-                Log.Error(sb.ToString());
+                SafeLog.Error(sb.ToString());
                 _initialized = false;
             }
         }
@@ -159,7 +159,7 @@ namespace RimWorldAgent
             {
                 CoreLog.Info("[agent-mod] 返回主菜单，开始关闭 Agent 和 CCB...");
                 try { UIMessageBus.Stop(); }
-                catch (Exception ex) { Log.Warning($"[agent-mod] UIMessageBus.Stop 异常 (可忽略): {ex.GetType().Name}: {ex.Message}"); }
+                catch (Exception ex) { SafeLog.Warning($"[agent-mod] UIMessageBus.Stop 异常 (可忽略): {ex.GetType().Name}: {ex.Message}"); }
                 _convStore = null;
                 AgentLoop.ConversationStore = null;
                 try
@@ -171,11 +171,11 @@ namespace RimWorldAgent
                 }
                 catch (Exception ex) { CoreLog.Error($"[agent-mod] 关闭 Agent 失败: {ex.Message}"); }
                 try { CcbManager.KillStaleProcesses(); }
-                catch (Exception ex) { Log.Warning($"[agent-mod] KillStaleProcesses 异常: {ex.Message}"); }
+                catch (Exception ex) { SafeLog.Warning($"[agent-mod] KillStaleProcesses 异常: {ex.Message}"); }
             }
             catch (Exception ex)
             {
-                Log.Warning($"[agent-mod] ShutdownEngine 异常 (非致命): {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                SafeLog.Warning($"[agent-mod] ShutdownEngine 异常 (非致命): {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             }
         }
     }

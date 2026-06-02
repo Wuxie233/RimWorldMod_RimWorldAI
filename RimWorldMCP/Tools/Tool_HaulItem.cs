@@ -153,7 +153,7 @@ namespace RimWorldMCP.Tools
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[haul_item] NRE: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                    McpLog.Error($"[haul_item] NRE: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
                     return ToolResult.Error($"搬运失败: {ex.GetType().Name}: {ex.Message}");
                 }
             });

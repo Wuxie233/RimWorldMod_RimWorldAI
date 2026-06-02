@@ -262,7 +262,7 @@ namespace RimWorldMCP.Tools
                 });
                 SimpleMspServer.McpServiceHost.Instance?.SendEvent("game/trapped", payload);
             }
-            catch (Exception ex) { Log.Warning($"[TrappedColonistTracker] SSE 推送失败: {ex.Message}"); }
+            catch (Exception ex) { McpLog.Warn($"[TrappedColonistTracker] SSE 推送失败: {ex.Message}"); }
         }
     }
 }

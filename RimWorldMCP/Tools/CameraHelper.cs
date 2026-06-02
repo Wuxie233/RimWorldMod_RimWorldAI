@@ -160,7 +160,7 @@ namespace RimWorldMCP.Tools
                 if (jd != null && JobWeightMap.TryGetValue(jd.defName, out var w)) return w;
                 return 3;
             }
-            catch (Exception ex) { Log.Warning($"[CameraHelper] 读取殖民者权重失败: {ex.Message}"); return 1; }
+            catch (Exception ex) { McpLog.Warn($"[CameraHelper] 读取殖民者权重失败: {ex.Message}"); return 1; }
         }
 
         /// <summary>连通分量聚类：距离 ≤ ClusterDistance 的殖民者归为一簇</summary>

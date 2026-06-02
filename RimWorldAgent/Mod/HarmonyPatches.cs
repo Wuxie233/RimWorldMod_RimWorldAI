@@ -14,33 +14,46 @@ namespace RimWorldAgent
 
         static HarmonyPatches()
         {
-            TryPatch(typeof(Verse.Profile.MemoryUtility), "ClearAllMapsAndWorld", nameof(Postfix_ClearAllMapsAndWorld));
+            // 纯日志：验证调用时机
+            TryPatch(typeof(Map), "DeinitAndRemoveMap", nameof(Postfix_DeinitAndRemoveMap), null);
+
+            // 主功能：退出存档时 Kill CCB（用 Prefix 在 ClearAllMapsAndWorld 执行前拿 GameComponent）
+            TryPatch(typeof(Verse.Profile.MemoryUtility), "ClearAllMapsAndWorld", null, nameof(Prefix_ClearAllMapsAndWorld));
         }
 
-        private static void TryPatch(Type targetType, string methodName, string postfixMethod)
+        private static void TryPatch(Type targetType, string methodName, string? postfixMethod, string? prefixMethod)
         {
             try
             {
                 var original = AccessTools.Method(targetType, methodName);
                 if (original == null)
                 {
-                    var allMethods = targetType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                    var all = targetType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                         .Select(m => m.Name).Distinct().Take(20);
-                    Log.Warning($"[agent-harmony] 跳过 {targetType.FullName}.{methodName}: 方法不存在 (前20: {string.Join(", ", allMethods)})");
+                    SafeLog.Warning($"[agent-harmony] 跳过 {targetType.FullName}.{methodName}: 方法不存在 (前20: {string.Join(", ", all)})");
                     return;
                 }
-                _harmony.Patch(original, postfix: new HarmonyMethod(typeof(HarmonyPatches), postfixMethod));
-                Log.Message($"[agent-harmony] Patch {targetType.Name}.{methodName} 成功");
+                var prefix = prefixMethod != null ? new HarmonyMethod(typeof(HarmonyPatches), prefixMethod) : null;
+                var postfix = postfixMethod != null ? new HarmonyMethod(typeof(HarmonyPatches), postfixMethod) : null;
+                _harmony.Patch(original, prefix: prefix, postfix: postfix);
+                SafeLog.Info($"[agent-harmony] Patch {targetType.Name}.{methodName} 成功");
             }
             catch (Exception ex)
             {
-                Log.Error($"[agent-harmony] Patch {targetType.FullName}.{methodName} 失败: {ex.GetType().Name}: {ex.Message}");
+                SafeLog.Error($"[agent-harmony] Patch {targetType.FullName}.{methodName} 失败: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
-        public static void Postfix_ClearAllMapsAndWorld()
+        // ===== 回调 =====
+
+        public static void Postfix_DeinitAndRemoveMap()
         {
-            Log.Message("[agent-harmony] MemoryUtility.ClearAllMapsAndWorld → 退出到主菜单");
+            SafeLog.Info("[agent-harmony] Map.DeinitAndRemoveMap 被调用");
+        }
+
+        public static void Prefix_ClearAllMapsAndWorld()
+        {
+            SafeLog.Info("[agent-harmony] MemoryUtility.ClearAllMapsAndWorld 即将执行 → 关闭 Agent");
             try
             {
                 var gc = Current.Game?.GetComponent<GameComponent_RimWorldAgent>();
@@ -49,12 +62,13 @@ namespace RimWorldAgent
                     gc.ShutdownEngine();
                     return;
                 }
-                Log.Warning("[agent-harmony] 无法获取 GameComponent 实例，仅 Kill CCB");
+                // Fallback: GameComponent 不可用时直接 Kill CCB
+                SafeLog.Warning("[agent-harmony] 无法获取 GameComponent，直接 Kill CCB");
                 CcbManager.KillStaleProcesses();
             }
             catch (Exception ex)
             {
-                Log.Error($"[agent-harmony] 退出存档关闭异常: {ex.Message}");
+                SafeLog.Error($"[agent-harmony] 关闭异常: {ex.Message}");
             }
         }
     }

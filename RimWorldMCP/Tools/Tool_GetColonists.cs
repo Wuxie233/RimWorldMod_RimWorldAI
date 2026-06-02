@@ -161,7 +161,7 @@ namespace RimWorldMCP.Tools
 
                 return injuries.Count > 0 ? string.Join("; ", injuries) : "健康";
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
         }
 
         private static string GetTopSkills(Pawn pawn)
@@ -188,7 +188,7 @@ namespace RimWorldMCP.Tools
 
                 return string.Join(" | ", top3);
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
         }
 
         private static string GetEquipmentSummary(Pawn pawn)
@@ -217,7 +217,7 @@ namespace RimWorldMCP.Tools
 
                 return parts.Count > 0 ? string.Join(" + ", parts) : "无装备";
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
         }
 
         private static string GetWorkPriorities(Pawn pawn)
@@ -237,13 +237,13 @@ namespace RimWorldMCP.Tools
                         if (priority > 0)
                             activePriorities.Add($"{wt.labelShort}:{priority}");
                     }
-                    catch (Exception ex) { Log.Warning($"[GetColonists] 读取工作优先级失败: {ex.Message}"); }
+                    catch (Exception ex) { McpLog.Warn($"[GetColonists] 读取工作优先级失败: {ex.Message}"); }
                 }
 
                 var top = activePriorities.OrderBy(p => int.Parse(p.Split(':').Last())).Take(6);
                 return activePriorities.Count > 0 ? string.Join(" ", top) : "未设置";
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
         }
 
         private static string GetTraits(Pawn pawn)
@@ -256,7 +256,7 @@ namespace RimWorldMCP.Tools
                 var list = labels.ToList();
                 return list.Count > 0 ? string.Join(", ", list) : "无";
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 数据读取失败: {ex.Message}"); return "无法读取"; }
         }
 
         private static string GetCurrentActivity(Pawn pawn)
@@ -270,7 +270,7 @@ namespace RimWorldMCP.Tools
                 if (string.IsNullOrEmpty(jobLabel)) return $"空闲{queueSuffix}";
                 return $"{jobLabel}{queueSuffix}";
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 读取活动状态失败: {ex.Message}"); return "空闲"; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 读取活动状态失败: {ex.Message}"); return "空闲"; }
         }
 
         private static string GetIdeoAndTitle(Pawn pawn)
@@ -286,7 +286,7 @@ namespace RimWorldMCP.Tools
                     parts.Add($"头衔: {title.def?.label}");
                 return string.Join(" | ", parts);
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
         }
 
         private static string GetMentalState(Pawn pawn)
@@ -296,7 +296,7 @@ namespace RimWorldMCP.Tools
                 if (!pawn.InMentalState || pawn.MentalState == null) return "";
                 return pawn.MentalState.InspectLine ?? pawn.MentalState.def.label;
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
         }
 
         private static string GetRecentLogs(Pawn pawn)
@@ -323,7 +323,7 @@ namespace RimWorldMCP.Tools
                     .Select(x => x.Entry.ToGameStringFromPOV(pawn));
                 return string.Join(" | ", last2);
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] 读取数据失败: {ex.Message}"); return ""; }
         }
 
         private static bool IsFleeing(Pawn pawn)
@@ -355,7 +355,7 @@ namespace RimWorldMCP.Tools
                 }
                 return false;
             }
-            catch (Exception ex) { Log.Warning($"[GetColonists] IsTargetedByEnemy 读取失败: {ex.Message}"); return false; }
+            catch (Exception ex) { McpLog.Warn($"[GetColonists] IsTargetedByEnemy 读取失败: {ex.Message}"); return false; }
         }
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args) => null;
     }

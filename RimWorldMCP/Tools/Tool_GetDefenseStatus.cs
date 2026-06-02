@@ -66,21 +66,21 @@ namespace RimWorldMCP.Tools
                             var shooting = pawn.skills.GetSkill(SkillDefOf.Shooting);
                             shootingSkill = shooting != null ? shooting.Level.ToString() : "-";
                         }
-                        catch (Exception ex) { Log.Warning($"[DefenseStatus] 读取技能失败: {ex.Message}"); }
+                        catch (Exception ex) { McpLog.Warn($"[DefenseStatus] 读取技能失败: {ex.Message}"); }
                         try
                         {
                             var melee = pawn.skills.GetSkill(SkillDefOf.Melee);
                             meleeSkill = melee != null ? melee.Level.ToString() : "-";
                         }
-                        catch (Exception ex) { Log.Warning($"[DefenseStatus] 读取技能失败: {ex.Message}"); }
+                        catch (Exception ex) { McpLog.Warn($"[DefenseStatus] 读取技能失败: {ex.Message}"); }
                     }
 
                     // 近战适配判定：格斗者特性 / 高近战低射击
                     bool isBrawler = pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) ?? false;
                     int meleeLevel = 0;
                     int shootingLevel = 0;
-                    try { meleeLevel = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0; } catch (Exception ex) { Log.Warning($"[DefenseStatus] 读取近战技能失败: {ex.Message}"); }
-                    try { shootingLevel = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0; } catch (Exception ex) { Log.Warning($"[DefenseStatus] 读取射击技能失败: {ex.Message}"); }
+                    try { meleeLevel = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0; } catch (Exception ex) { McpLog.Warn($"[DefenseStatus] 读取近战技能失败: {ex.Message}"); }
+                    try { shootingLevel = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0; } catch (Exception ex) { McpLog.Warn($"[DefenseStatus] 读取射击技能失败: {ex.Message}"); }
                     bool isMeleeSuitable = isBrawler || (meleeLevel >= 8 && shootingLevel < 6);
                     if (isMeleeSuitable && !isCombatIncapable)
                     {

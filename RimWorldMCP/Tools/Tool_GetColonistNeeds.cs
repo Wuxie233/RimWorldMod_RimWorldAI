@@ -100,7 +100,7 @@ namespace RimWorldMCP.Tools
                                         sb.AppendLine($"    想法: {string.Join(", ", top3)}");
                                     }
                                 }
-                                catch (Exception ex) { Log.Warning($"[ColonistNeeds] 读取心情想法失败: {ex.Message}"); }
+                                catch (Exception ex) { McpLog.Warn($"[ColonistNeeds] 读取心情想法失败: {ex.Message}"); }
                             }
 
                             // 标记过低的项
@@ -115,7 +115,7 @@ namespace RimWorldMCP.Tools
                             {
                                 sb.AppendLine($"- {need.def?.LabelCap ?? "未知需求"}: 数据不可用");
                             }
-                            catch (Exception ex) { Log.Warning($"[ColonistNeeds] 读取需求数据失败: {ex.Message}"); }
+                            catch (Exception ex) { McpLog.Warn($"[ColonistNeeds] 读取需求数据失败: {ex.Message}"); }
                         }
                     }
 

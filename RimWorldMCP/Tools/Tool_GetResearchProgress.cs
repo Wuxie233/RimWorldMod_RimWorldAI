@@ -191,7 +191,7 @@ namespace RimWorldMCP.Tools
                     sb.AppendLine("### 研究效率");
                     sb.AppendLine($"- 研究速度因数: {researchSpeed:P1}");
                 }
-                catch (Exception ex) { Log.Warning($"[ResearchProgress] 读取研究速度失败: {ex.Message}"); }
+                catch (Exception ex) { McpLog.Warn($"[ResearchProgress] 读取研究速度失败: {ex.Message}"); }
 
                 return ToolResult.Success(sb.ToString());
             });
