@@ -18,9 +18,9 @@ namespace RimWorldAgent.Core
         public static UiResult Result(string subtype, string? stopReason) => new UiResult(subtype, stopReason ?? "");
         public static UiAborted Aborted() => new UiAborted();
         public static UiSystemInit SystemInit(string? model, string? sessionId, string? claudeCodeVersion = null,
-            string? permissionMode = null, string? apiKeySource = null, List<UiMcpServerRef>? mcpServers = null,
+            string? cwd = null, string? permissionMode = null, string? apiKeySource = null, List<UiMcpServerRef>? mcpServers = null,
             List<string>? tools = null, List<string>? skills = null)
-            => new UiSystemInit(model, sessionId, claudeCodeVersion, permissionMode, apiKeySource,
+            => new UiSystemInit(model, sessionId, claudeCodeVersion, cwd, permissionMode, apiKeySource,
                 mcpServers ?? new List<UiMcpServerRef>(), tools ?? new List<string>(), skills ?? new List<string>());
         public static UiError Error(string error) => new UiError(error);
         public static UiUser User(string text) => new UiUser(text);
@@ -92,15 +92,16 @@ namespace RimWorldAgent.Core
         public string? model { get; }
         public string? session_id { get; }
         public string? claude_code_version { get; }
+        public string? cwd { get; }
         public string? permissionMode { get; }
         public string? apiKeySource { get; }
         public List<UiMcpServerRef> mcp_servers { get; }
         public List<string> tools { get; }
         public List<string> skills { get; }
-        public UiSystemInit(string? model, string? sessionId, string? claudeCodeVersion, string? permissionMode,
-            string? apiKeySource, List<UiMcpServerRef> mcpServers, List<string> tools, List<string> skills)
+        public UiSystemInit(string? model, string? sessionId, string? claudeCodeVersion, string? cwd,
+            string? permissionMode, string? apiKeySource, List<UiMcpServerRef> mcpServers, List<string> tools, List<string> skills)
         { this.model = model; this.session_id = sessionId; this.claude_code_version = claudeCodeVersion;
-          this.permissionMode = permissionMode; this.apiKeySource = apiKeySource;
+          this.cwd = cwd; this.permissionMode = permissionMode; this.apiKeySource = apiKeySource;
           this.mcp_servers = mcpServers; this.tools = tools; this.skills = skills; }
     }
 

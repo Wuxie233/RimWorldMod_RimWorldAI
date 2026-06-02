@@ -678,7 +678,7 @@
       <h2>SDK 信息</h2>
       <table class="info-table">
         <tr><th>Model</th><td><span id="info-model"></span></td></tr>
-        <tr><th>Project</th><td></td></tr>
+        <tr><th>Project</th><td><span id="info-project">-</span></td></tr>
         <tr><th>Session</th><td><span id="info-session">-</span></td></tr>
         <tr><th>Version</th><td><span id="info-version">-</span></td></tr>
         <tr><th>Permission</th><td><span id="info-permission">-</span></td></tr>
@@ -1218,6 +1218,7 @@
   function updateSdkInfo(msg) {
     var el;
     el = document.getElementById('info-model'); if (el) el.textContent = msg.model || '?';
+    el = document.getElementById('info-project'); if (el) el.textContent = msg.cwd || '-';
     el = document.getElementById('info-version'); if (el) el.textContent = msg.claude_code_version || '?';
     el = document.getElementById('info-session'); if (el) el.textContent = msg.session_id || '?';
     el = document.getElementById('info-permission'); if (el) el.textContent = msg.permissionMode || '?';
