@@ -129,22 +129,18 @@ namespace RimWorldAgent.Core
                 };
                 socket.OnMessage = msg =>
                 {
-                    CoreLog.Info($"[CCGUI_DEBUG] UIMessageBus 收到客户端消息 len={msg.Length} preview={msg.Substring(0, Math.Min(msg.Length, 200))}");
                     try
                     {
                         using var doc = JsonDocument.Parse(msg);
                         var root = doc.RootElement;
                         var type = root.TryGetProperty("type", out var t) ? t.GetString() : "";
-                        CoreLog.Info($"[CCGUI_DEBUG] UIMessageBus 解析客户端消息 type={type}");
                         switch (type)
                         {
                             case "chat":
                                 var text = root.TryGetProperty("text", out var txt) ? txt.GetString() ?? "" : "";
                                 if (!string.IsNullOrEmpty(text))
                                 {
-                                    var think = ParseThinking(root);
-                                    CoreLog.Info($"[CCGUI_DEBUG] UIMessageBus chat thinking mode={think?.Mode} effort={think?.Effort} tokens={think?.Tokens}");
-                                    OnChat?.Invoke(text, think);
+                                    OnChat?.Invoke(text, ParseThinking(root));
                                 }
                                 break;
                             case "abort":

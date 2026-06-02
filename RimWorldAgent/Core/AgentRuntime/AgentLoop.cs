@@ -36,7 +36,6 @@ namespace RimWorldAgent.Core.AgentRuntime
             // 客户端 chat → 中断当前会话 + 预算检查 + 回显 + CCB
             UIMessageBus.OnChat += async (text, thinking) =>
             {
-                CoreLog.Info($"[CCGUI_DEBUG] AgentLoop.OnChat 触发 text=\"{text.Substring(0, Math.Min(text.Length, 60))}\"");
                 if (BudgetLimit > 0 && TokenUsageTracker.TotalAllTokens >= BudgetLimit)
                 {
                     UIMessageBus.PushUiMessage(UiMessage.Error($"Token 预算已用尽 ({TokenUsageTracker.TotalAllTokens}/{BudgetLimit})"));
@@ -44,12 +43,9 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
                 // 用户消息本地录制 + 推送（C# 统一处理，SDK 不回传 user echo）
                 ConversationStore?.RecordUserMessage(text);
-                CoreLog.Info($"[CCGUI_DEBUG] AgentLoop.OnChat 调用 SendAbort...");
                 await ws.SendAbort();
                 UIMessageBus.PushUiMessage(UiMessage.User(text));
-                CoreLog.Info($"[CCGUI_DEBUG] AgentLoop.OnChat SendAbort done, 调用 SendChat...");
                 await ws.SendChat(ChatChannel.Bus, text, thinking);
-                CoreLog.Info($"[CCGUI_DEBUG] AgentLoop.OnChat SendChat done");
             };
 
             // 客户端 abort → CCB

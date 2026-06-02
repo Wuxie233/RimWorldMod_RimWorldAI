@@ -83,17 +83,16 @@ public class CcbWebSocket : IDisposable
 
             await _ws.ConnectAsync(new Uri(_url), _cts.Token);
             _state = CcbClientState.Connected;
-            CoreLog.Info($"[CCGUI_DEBUG] WS 已连接: {_url}");
+            CoreLog.Info($"[CcbWS] 已连接: {_url}");
 
             await SendHello();
-            CoreLog.Info($"[CCGUI_DEBUG] hello 已发送, 等待 hello-ok...");
             _ = ReceiveLoop(_cts.Token);
 
             var timeout = Task.Delay(timeoutMs);
             if (await Task.WhenAny(_helloOk.Task, timeout) == _helloOk.Task)
             {
                 _state = CcbClientState.Ready;
-                CoreLog.Info("[CCGUI_DEBUG] hello-ok 收到, 状态=Ready");
+                CoreLog.Info("[CcbWS] 握手完成，状态=Ready");
                 _reconnectAttempts = 0;
                 _reconnectDelayMs = 5000;
                 _heartbeatTimer?.Dispose();
@@ -137,9 +136,7 @@ public class CcbWebSocket : IDisposable
         if (string.IsNullOrEmpty(mode)) mode = "default";
         if (string.IsNullOrEmpty(effort)) effort = "medium";
 
-        CoreLog.Info($"[CCGUI_DEBUG] CcbWS.SendChat session={session} mode={mode} effort={effort} tokens={tokens}");
         await SendJson(new { type = "chat", text, session, thinking = new { mode, effort, tokens } });
-        CoreLog.Info($"[CCGUI_DEBUG] CcbWS.SendChat done");
     }
 
     /// <summary>发送中断请求，中止当前 AI 回复</summary>
@@ -221,7 +218,6 @@ public class CcbWebSocket : IDisposable
             switch (msg)
             {
                 case SdkHelloOkMessage _:
-                    CoreLog.Info("[CCGUI_DEBUG] 收到 hello-ok, 设置 _helloOk");
                     _helloOk?.TrySetResult(true);
                     break;
 
