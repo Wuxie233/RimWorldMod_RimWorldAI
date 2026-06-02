@@ -395,22 +395,26 @@ namespace RimWorldAgent
                         break;
                     case "sdk-tasks":
                     {
-                        var tasksArr = root.TryGetProperty("tasks", out var ta) ? ta : default;
+                        // 在 using scope 内提取数据，避免 lambda 引用已释放的 JsonDocument
+                        var tasks = new List<SdkTaskItem>();
+                        if (root.TryGetProperty("tasks", out var ta) && ta.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var te in ta.EnumerateArray())
+                            {
+                                tasks.Add(new SdkTaskItem
+                                {
+                                    Id = te.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "",
+                                    Subject = te.TryGetProperty("subject", out var sjEl) ? sjEl.GetString() ?? "" : "",
+                                    Status = te.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "pending" : "pending"
+                                });
+                            }
+                        }
                         EnqueueUiEvent(() =>
                         {
                             lock (_lock)
                             {
                                 _sdkTasks.Clear();
-                                if (tasksArr.ValueKind == JsonValueKind.Array)
-                                {
-                                    foreach (var te in tasksArr.EnumerateArray())
-                                    {
-                                        var tid = te.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
-                                        var tsubj = te.TryGetProperty("subject", out var sjEl) ? sjEl.GetString() ?? "" : "";
-                                        var tstat = te.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "pending" : "pending";
-                                        _sdkTasks.Add(new SdkTaskItem { Id = tid, Subject = tsubj, Status = tstat });
-                                    }
-                                }
+                                _sdkTasks.AddRange(tasks);
                             }
                             OnChanged?.Invoke();
                         });
