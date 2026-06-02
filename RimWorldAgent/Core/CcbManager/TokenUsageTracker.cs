@@ -35,6 +35,8 @@ namespace RimWorldAgent
         public static int TotalToolSuccess => EnsureDb().TotalToolSuccess;
         public static int TotalToolFailure => EnsureDb().TotalToolFailure;
         public static long TotalDurationMs => EnsureDb().TotalDurationMs;
+        /// <summary>当前 SDK 上下文窗口大小（来自 assistant 消息 usage）</summary>
+        public static long CurrentContextWindow { get; set; }
 
         public static void Record(string model, long inputTokens, long outputTokens,
             long cacheRead, long cacheCreate, long durationMs)

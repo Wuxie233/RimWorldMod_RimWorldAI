@@ -47,6 +47,9 @@ namespace RimWorldAgent.Core.AgentRuntime
         /// <summary>当前是否有活跃的 AI 会话（AgentEngine 用，防止重复启动）</summary>
         public static volatile bool IsRunning;
 
+        /// <summary>SDK 是否正在执行上下文压缩（由 CcbWebSocket 在收到 system status 消息时更新）</summary>
+        public static bool IsCompacting { get; set; }
+
         public static string StatusText
             => CurrentPhase switch { GamePhase.Plan => "PLAN / 暂停", GamePhase.Act => "ACT / 运行", _ => "ACT / 运行" };
 

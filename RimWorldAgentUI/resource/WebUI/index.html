@@ -128,6 +128,13 @@
     white-space: nowrap; flex-shrink: 0;
     letter-spacing: 0.3px;
   }
+  .header-compaction {
+    font-size: 13px; color: var(--amber); font-weight: 600;
+    padding: 4px 12px; border-radius: 6px;
+    background: var(--amber-bg); border: 1px solid var(--amber-border);
+    white-space: nowrap; flex-shrink: 0;
+    letter-spacing: 0.3px; margin-left: 8px;
+  }
   #info-btn {
     background: none; border: 1px solid var(--border-strong); color: var(--muted);
     border-radius: 4px; width: 22px; height: 22px; cursor: pointer;
@@ -686,6 +693,7 @@
   <!-- Compose -->
   <div class="compose">
     <span class="header-agent" id="agent-role">休眠中</span>
+    <span class="header-compaction" id="compaction-status" style="display:none">⏳ 压缩中…</span>
     <span class="prompt">&gt;</span>
     <textarea id="chat-input" placeholder="输入消息..." rows="1"></textarea>
     <button id="send-btn" disabled>Send</button>
@@ -975,6 +983,11 @@
     if (el) el.textContent = role || '休眠中';
   }
 
+  function updateCompactionStatus(active) {
+    var el = document.getElementById('compaction-status');
+    if (el) el.style.display = active ? 'inline' : 'none';
+  }
+
   function updateBudgetStatus(data) {
     if (!hdrBudget) return;
     var limit = data.limit || 0;
@@ -982,19 +995,21 @@
     var cacheRead = data.cacheRead || 0;
     var totalInput = data.totalInput || 0;
     var cacheCreate = data.cacheCreate || 0;
+    var contextWindow = data.contextWindow || 0;
     var fmt = function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : String(v); };
+    var ctxHtml = contextWindow > 0 ? '<span class="ctx-window">(窗口:' + (contextWindow/1000).toFixed(0) + 'K)</span> ' : '';
     var cacheHtml = '';
     if (totalInput + cacheRead + cacheCreate > 0) {
       var cachePct = Math.round(cacheRead / (totalInput + cacheRead + cacheCreate) * 100);
       cacheHtml = ' <span class="cache-rate">缓存 ' + fmt(cacheRead) + '(' + cachePct + '%)</span>';
     }
     if (limit <= 0) {
-      hdrBudget.innerHTML = 'Token ' + (used > 0 ? fmt(used) : '--') + cacheHtml;
+      hdrBudget.innerHTML = ctxHtml + 'Token ' + (used > 0 ? fmt(used) : '--') + cacheHtml;
       return;
     }
     var pct = used / limit * 100;
     var barCls = pct >= 95 ? ' danger' : pct >= 80 ? ' warning' : '';
-    hdrBudget.innerHTML = 'Token ' + fmt(used) + '/' + fmt(limit) +
+    hdrBudget.innerHTML = ctxHtml + 'Token ' + fmt(used) + '/' + fmt(limit) +
       ' <span class="budget-bar' + barCls + '"></span>' + cacheHtml;
   }
 
@@ -1084,6 +1099,10 @@
     switch (msg.type) {
       case 'agent-status':
         updateAgentRole(msg.role);
+        break;
+
+      case 'compaction-status':
+        updateCompactionStatus(msg.active);
         break;
 
       case 'budget_status':
@@ -1685,34 +1704,34 @@
       else { addMsgFromContent(false, msg.message?.content, msg.agent_type); }
     } else if (msg.type === 'assistant') {
       addMsgFromContent(true, msg.message?.content, msg.agent_type);
-    }
-    scrollDeferred();
-  }
-
-  function addMsgFromContent(isAssistant, content, agentType) {
-    if (!content || !Array.isArray(content)) return;
-    for (var i = 0; i < content.length; i++) {
-      var block = content[i];
-      if (block.type === 'thinking' && block.thinking) {
-        var thp = createThinkingPanel(block.thinking, Date.now() + i);
-        finalizeThinkingPanel(thp);
-      } else if (block.type === 'text' && block.text) {
-        if (isAssistant) makeAgentPanel(block.text, agentType || null);
-        else makeUserPanel(block.text);
+        }
+        scrollDeferred();
       }
-    }
-  }
 
-  // 简版 tool result 渲染（用于历史回放，无 timing 动画）
-  function applyToolResultSimple(block) {
-    var toolId = block.tool_use_id || block.id;
-    if (toolId && toolPanels[toolId]) {
-      applyToolResult(block, null);
-    }
-  }
+      function addMsgFromContent(isAssistant, content, agentType) {
+        if (!content || !Array.isArray(content)) return;
+        for (var i = 0; i < content.length; i++) {
+          var block = content[i];
+          if (block.type === 'thinking' && block.thinking) {
+            var thp = createThinkingPanel(block.thinking, Date.now() + i);
+            finalizeThinkingPanel(thp);
+          } else if (block.type === 'text' && block.text) {
+            if (isAssistant) makeAgentPanel(block.text, agentType || null);
+            else makeUserPanel(block.text);
+          }
+        }
+      }
 
-  // ===== Send =====
-  function sendMessage() {
+      // 简版 tool result 渲染（用于历史回放，无 timing 动画）
+      function applyToolResultSimple(block) {
+        var toolId = block.tool_use_id || block.id;
+        if (toolId && toolPanels[toolId]) {
+          applyToolResult(block, null);
+        }
+      }
+
+      // ===== Send =====
+      function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || !connected) return;
     var thinking = { mode: currentMode, effort: currentEffort };

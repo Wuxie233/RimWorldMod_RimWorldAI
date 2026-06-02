@@ -18,6 +18,10 @@ namespace RimWorldAgent.Core.CcbManager
         public string RawJson { get; }
         /// <summary>消息类型标识符（assistant / stream_event / result / system / user / hello-ok / aborted）</summary>
         public string Type { get; }
+        /// <summary>消息唯一标识符（UUID）</summary>
+        public string? Uuid { get; protected set; }
+        /// <summary>会话 ID</summary>
+        public string? SessionId { get; protected set; }
 
         protected SdkMessage(string rawJson, string type)
         {
@@ -109,6 +113,8 @@ namespace RimWorldAgent.Core.CcbManager
         public string? ParentToolUseId { get; }
         /// <summary>API 调用错误类型（authentication_failed / rate_limit / server_error 等），仅出错时有值</summary>
         public string? Error { get; }
+        /// <summary>消息 ID（message.id）</summary>
+        public string? MessageId { get; }
         /// <summary>内容块列表（文本 / 工具调用 / 思考）</summary>
         public List<SdkContentBlock> Content { get; } = new();
         /// <summary>Token 使用统计</summary>
@@ -125,6 +131,8 @@ namespace RimWorldAgent.Core.CcbManager
             var known = new HashSet<string> { "type", "message", "parent_tool_use_id", "error", "uuid", "session_id", "context_management" };
             ValidateFields(root, known, rawJson);
 
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
             ParentToolUseId = Str(root, "parent_tool_use_id");
             Error = Str(root, "error");
 
@@ -133,6 +141,7 @@ namespace RimWorldAgent.Core.CcbManager
                 var msgKnown = new HashSet<string> { "id", "type", "role", "content", "model", "stop_reason", "stop_sequence", "usage", "context_management" };
                 ValidateFields(msg, msgKnown, rawJson);
 
+                MessageId = Str(msg, "id");
                 Model = Str(msg, "model");
                 StopReason = Str(msg, "stop_reason");
                 StopSequence = Str(msg, "stop_sequence");
@@ -169,14 +178,19 @@ namespace RimWorldAgent.Core.CcbManager
         public int? Index { get; }
         /// <summary>流式事件详情</summary>
         public SdkStreamEvent? Event { get; }
+        /// <summary>首 Token 延迟（ms），SDK 发出请求到首个 token 返回的时间</summary>
+        public long? TtftMs { get; }
 
         public SdkStreamEventMessage(string rawJson, JsonElement root) : base(rawJson, "stream_event")
         {
             var known = new HashSet<string> { "type", "event", "parent_tool_use_id", "index", "uuid", "session_id", "ttft_ms" };
             ValidateFields(root, known, rawJson);
 
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
             ParentToolUseId = Str(root, "parent_tool_use_id");
             Index = Int(root, "index");
+            TtftMs = Long(root, "ttft_ms");
 
             if (root.TryGetProperty("event", out var evt))
             {
@@ -223,7 +237,7 @@ namespace RimWorldAgent.Core.CcbManager
 
     /// <summary>
     /// result 消息 — 会话结束。
-    /// 包含成功/失败状态、耗时、token 统计等信息。
+    /// 包含成功/失败状态、耗时、token 统计、费用等信息。
     /// </summary>
     public class SdkResultMessage : SdkMessage
     {
@@ -243,8 +257,18 @@ namespace RimWorldAgent.Core.CcbManager
         public string? Result { get; }
         /// <summary>总费用（美元）</summary>
         public double? TotalCostUsd { get; }
-        /// <summary>Token 使用统计</summary>
+        /// <summary>Token 使用统计（会话聚合）</summary>
         public SdkUsage? Usage { get; }
+        /// <summary>各模型 Token 详情（key=modelName）</summary>
+        public Dictionary<string, SdkModelUsage> ModelUsage { get; } = new();
+        /// <summary>被权限拒绝的工具调用列表</summary>
+        public List<SdkPermissionDenial> PermissionDenials { get; } = new();
+        /// <summary>错误消息列表（仅 error 子类型）</summary>
+        public List<string> Errors { get; } = new();
+        /// <summary>快速模式状态：off / cooldown / on</summary>
+        public string? FastModeState { get; }
+        /// <summary>结构化输出结果（raw JSON）</summary>
+        public string? StructuredOutput { get; }
 
         public SdkResultMessage(string rawJson, JsonElement root) : base(rawJson, "result")
         {
@@ -253,6 +277,8 @@ namespace RimWorldAgent.Core.CcbManager
                 "modelUsage", "permission_denials", "errors", "uuid", "session_id", "fast_mode_state", "structured_output" };
             ValidateFields(root, known, rawJson);
 
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
             Subtype = Str(root, "subtype") ?? "unknown";
             StopReason = Str(root, "stop_reason");
             IsError = Bool(root, "is_error") ?? false;
@@ -261,9 +287,23 @@ namespace RimWorldAgent.Core.CcbManager
             DurationApiMs = Long(root, "duration_api_ms");
             Result = Str(root, "result");
             TotalCostUsd = root.TryGetProperty("total_cost_usd", out var cost) ? cost.GetDouble() : (double?)null;
+            FastModeState = Str(root, "fast_mode_state");
+            StructuredOutput = root.TryGetProperty("structured_output", out var so) && so.ValueKind != JsonValueKind.Null ? so.GetRawText() : null;
 
             if (root.TryGetProperty("usage", out var usage))
                 Usage = new SdkUsage(usage);
+
+            if (root.TryGetProperty("modelUsage", out var mu) && mu.ValueKind == JsonValueKind.Object)
+                foreach (var kv in mu.EnumerateObject())
+                    ModelUsage[kv.Name] = new SdkModelUsage(kv.Value);
+
+            if (root.TryGetProperty("permission_denials", out var pd) && pd.ValueKind == JsonValueKind.Array)
+                foreach (var item in pd.EnumerateArray())
+                    PermissionDenials.Add(new SdkPermissionDenial(item));
+
+            if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array)
+                foreach (var e in errs.EnumerateArray())
+                    Errors.Add(e.GetString() ?? "");
         }
     }
 
@@ -277,8 +317,6 @@ namespace RimWorldAgent.Core.CcbManager
         public string Subtype { get; }
         /// <summary>当前使用的模型标识符（subtype=init）</summary>
         public string? Model { get; }
-        /// <summary>会话 ID（subtype=init）</summary>
-        public string? SessionId { get; }
         /// <summary>Claude Code 版本号（subtype=init）</summary>
         public string? ClaudeCodeVersion { get; }
         /// <summary>权限模式：default / acceptEdits / bypassPermissions / plan / dontAsk（subtype=init/status）</summary>
@@ -293,22 +331,52 @@ namespace RimWorldAgent.Core.CcbManager
         public List<string> Skills { get; } = new();
         /// <summary>MCP 服务器连接状态列表（subtype=init）</summary>
         public List<SdkMcpServerInfo> McpServers { get; } = new();
+        /// <summary>运行状态（subtype=status 时有效）："compacting" 表示上下文压缩中，null 表示正常</summary>
+        public string? Status { get; }
+        /// <summary>可用斜杠命令列表（subtype=init）</summary>
+        public List<string> SlashCommands { get; } = new();
+        /// <summary>输出样式（subtype=init）</summary>
+        public string? OutputStyle { get; }
+        /// <summary>可用 Agent 类型列表（subtype=init）</summary>
+        public List<string> Agents { get; } = new();
+        /// <summary>已加载插件列表（subtype=init）</summary>
+        public List<SdkPluginInfo> Plugins { get; } = new();
+        /// <summary>启用的 Beta 特性列表（subtype=init）</summary>
+        public List<string> Betas { get; } = new();
+        /// <summary>快速模式状态：off / cooldown / on（subtype=init）</summary>
+        public string? FastModeState { get; }
+        /// <summary>是否禁用分析上报（subtype=init 运行时字段）</summary>
+        public bool? AnalyticsDisabled { get; }
+        /// <summary>是否禁用产品反馈（subtype=init 运行时字段）</summary>
+        public bool? ProductFeedbackDisabled { get; }
+        /// <summary>记忆文件路径配置（subtype=init 运行时字段）</summary>
+        public SdkMemoryPaths? MemoryPaths { get; }
+        /// <summary>上下文压缩元数据（subtype=compact_boundary）</summary>
+        public SdkCompactMetadata? CompactMetadata { get; }
 
         public SdkSystemMessage(string rawJson, JsonElement root) : base(rawJson, "system")
         {
-            var known = new HashSet<string> { "type", "subtype", "uuid", "session_id", "model", "claude_code_version", "permissionMode", "cwd", "apiKeySource", "tools", "skills", "mcp_servers", "slash_commands", "output_style", "agents", "plugins", "betas", "fast_mode_state", "status", "compact_metadata", "analytics_disabled", "product_feedback_disabled", "memory_paths" };
+            var known = new HashSet<string> { "type", "subtype", "uuid", "session_id", "model", "claude_code_version",
+                "permissionMode", "cwd", "apiKeySource", "tools", "skills", "mcp_servers",
+                "slash_commands", "output_style", "agents", "plugins", "betas", "fast_mode_state",
+                "status", "compact_metadata", "analytics_disabled", "product_feedback_disabled", "memory_paths" };
             ValidateFields(root, known, rawJson);
 
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
             Subtype = Str(root, "subtype") ?? "";
 
             if (Subtype == "init")
             {
                 Model = Str(root, "model");
-                SessionId = Str(root, "session_id");
                 ClaudeCodeVersion = Str(root, "claude_code_version");
                 PermissionMode = Str(root, "permissionMode");
                 Cwd = Str(root, "cwd");
                 ApiKeySource = Str(root, "apiKeySource");
+                OutputStyle = Str(root, "output_style");
+                FastModeState = Str(root, "fast_mode_state");
+                AnalyticsDisabled = Bool(root, "analytics_disabled");
+                ProductFeedbackDisabled = Bool(root, "product_feedback_disabled");
 
                 if (root.TryGetProperty("tools", out var tools) && tools.ValueKind == JsonValueKind.Array)
                     foreach (var t in tools.EnumerateArray()) Tools.Add(t.GetString() ?? "");
@@ -317,6 +385,26 @@ namespace RimWorldAgent.Core.CcbManager
                 if (root.TryGetProperty("mcp_servers", out var mcps) && mcps.ValueKind == JsonValueKind.Array)
                     foreach (var m in mcps.EnumerateArray())
                         McpServers.Add(new SdkMcpServerInfo(Str(m, "name") ?? "?", Str(m, "status") ?? "?"));
+                if (root.TryGetProperty("slash_commands", out var sc) && sc.ValueKind == JsonValueKind.Array)
+                    foreach (var c in sc.EnumerateArray()) SlashCommands.Add(c.GetString() ?? "");
+                if (root.TryGetProperty("agents", out var ag) && ag.ValueKind == JsonValueKind.Array)
+                    foreach (var a in ag.EnumerateArray()) Agents.Add(a.GetString() ?? "");
+                if (root.TryGetProperty("plugins", out var pl) && pl.ValueKind == JsonValueKind.Array)
+                    foreach (var p in pl.EnumerateArray())
+                        Plugins.Add(new SdkPluginInfo(Str(p, "name") ?? "?", Str(p, "path") ?? "?", Str(p, "source")));
+                if (root.TryGetProperty("betas", out var be) && be.ValueKind == JsonValueKind.Array)
+                    foreach (var b in be.EnumerateArray()) Betas.Add(b.GetString() ?? "");
+                if (root.TryGetProperty("memory_paths", out var mp))
+                    MemoryPaths = new SdkMemoryPaths(mp);
+            }
+            else if (Subtype == "status")
+            {
+                Status = Str(root, "status");
+            }
+            else if (Subtype == "compact_boundary")
+            {
+                if (root.TryGetProperty("compact_metadata", out var cm))
+                    CompactMetadata = new SdkCompactMetadata(cm);
             }
         }
     }
@@ -335,6 +423,10 @@ namespace RimWorldAgent.Core.CcbManager
         public string? Priority { get; }
         /// <summary>内容块列表（text / tool_result）</summary>
         public List<SdkContentBlock> Content { get; } = new();
+        /// <summary>消息创建时间（ISO 时间戳）</summary>
+        public string? Timestamp { get; }
+        /// <summary>是否为会话重放消息</summary>
+        public bool? IsReplay { get; }
 
         public SdkUserMessage(string rawJson, JsonElement root) : base(rawJson, "user")
         {
@@ -342,9 +434,13 @@ namespace RimWorldAgent.Core.CcbManager
                 "timestamp", "priority", "uuid", "session_id", "tool_use_result", "isReplay" };
             ValidateFields(root, known, rawJson);
 
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
             ParentToolUseId = Str(root, "parent_tool_use_id");
             IsSynthetic = Bool(root, "isSynthetic") ?? false;
             Priority = Str(root, "priority");
+            Timestamp = Str(root, "timestamp");
+            IsReplay = Bool(root, "isReplay");
 
             if (root.TryGetProperty("message", out var msg) &&
                 msg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
@@ -371,6 +467,8 @@ namespace RimWorldAgent.Core.CcbManager
         {
             var known = new HashSet<string> { "type", "uuid", "session_id" };
             ValidateFields(root, known, rawJson);
+            Uuid = Str(root, "uuid");
+            SessionId = Str(root, "session_id");
         }
     }
 
@@ -380,10 +478,14 @@ namespace RimWorldAgent.Core.CcbManager
     /// </summary>
     public class SdkHelloOkMessage : SdkMessage
     {
+        /// <summary>认证信息（json 字符串或 null）</summary>
+        public string? Auth { get; }
+
         public SdkHelloOkMessage(string rawJson, JsonElement root) : base(rawJson, "hello-ok")
         {
             var known = new HashSet<string> { "type", "auth" };
             ValidateFields(root, known, rawJson);
+            Auth = Str(root, "auth");
         }
     }
 
@@ -537,7 +639,7 @@ namespace RimWorldAgent.Core.CcbManager
 
     /// <summary>
     /// Token 使用统计。
-    /// 包含输入/输出 token 数以及 prompt cache 命中/写入 token 数。
+    /// 包含输入/输出 token 数、prompt cache 命中/写入、web 搜索、费用、窗口信息。
     /// </summary>
     public class SdkUsage
     {
@@ -549,6 +651,14 @@ namespace RimWorldAgent.Core.CcbManager
         public long? CacheReadInputTokens { get; }
         /// <summary>新写入 prompt cache 的 token 数（缓存创建）</summary>
         public long? CacheCreationInputTokens { get; }
+        /// <summary>Web 搜索请求次数</summary>
+        public long? WebSearchRequests { get; }
+        /// <summary>费用（美元）</summary>
+        public double? CostUsd { get; }
+        /// <summary>上下文窗口大小</summary>
+        public long? ContextWindow { get; }
+        /// <summary>最大输出 Token 数</summary>
+        public long? MaxOutputTokens { get; }
 
         public SdkUsage(JsonElement usage)
         {
@@ -556,7 +666,83 @@ namespace RimWorldAgent.Core.CcbManager
             OutputTokens = usage.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var n2) ? n2 : 0;
             CacheReadInputTokens = usage.TryGetProperty("cache_read_input_tokens", out var cr) && cr.TryGetInt64(out var n3) ? n3 : (long?)null;
             CacheCreationInputTokens = usage.TryGetProperty("cache_creation_input_tokens", out var cc) && cc.TryGetInt64(out var n4) ? n4 : (long?)null;
+            WebSearchRequests = usage.TryGetProperty("web_search_requests", out var wr) && wr.TryGetInt64(out var n5) ? n5 : (long?)null;
+            CostUsd = usage.TryGetProperty("cost_usd", out var cu) && cu.TryGetDouble(out var d) ? d : (double?)null;
+            ContextWindow = usage.TryGetProperty("context_window", out var cw) && cw.TryGetInt64(out var n6) ? n6 : (long?)null;
+            MaxOutputTokens = usage.TryGetProperty("max_output_tokens", out var mo) && mo.TryGetInt64(out var n7) ? n7 : (long?)null;
         }
+    }
+
+    /// <summary>
+    /// 单模型 Token 使用详情（modelUsage 字典的子项）。
+    /// 字段集与 SdkUsage 相同，但每个字段都是非可空计数。
+    /// </summary>
+    public class SdkModelUsage
+    {
+        /// <summary>输入 token 数</summary>
+        public long InputTokens { get; }
+        /// <summary>输出 token 数</summary>
+        public long OutputTokens { get; }
+        /// <summary>缓存读取 token 数</summary>
+        public long CacheReadInputTokens { get; }
+        /// <summary>缓存写入 token 数</summary>
+        public long CacheCreationInputTokens { get; }
+        /// <summary>Web 搜索请求次数</summary>
+        public long WebSearchRequests { get; }
+        /// <summary>费用（美元）</summary>
+        public double CostUsd { get; }
+        /// <summary>上下文窗口大小</summary>
+        public long ContextWindow { get; }
+        /// <summary>最大输出 Token 数</summary>
+        public long MaxOutputTokens { get; }
+
+        public SdkModelUsage(JsonElement el)
+        {
+            InputTokens = el.TryGetProperty("input_tokens", out var i) && i.TryGetInt64(out var n) ? n : 0;
+            OutputTokens = el.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var n2) ? n2 : 0;
+            CacheReadInputTokens = el.TryGetProperty("cache_read_input_tokens", out var cr) && cr.TryGetInt64(out var n3) ? n3 : 0;
+            CacheCreationInputTokens = el.TryGetProperty("cache_creation_input_tokens", out var cc) && cc.TryGetInt64(out var n4) ? n4 : 0;
+            WebSearchRequests = el.TryGetProperty("web_search_requests", out var wr) && wr.TryGetInt64(out var n5) ? n5 : 0;
+            CostUsd = el.TryGetProperty("cost_usd", out var cu) && cu.TryGetDouble(out var d) ? d : 0;
+            ContextWindow = el.TryGetProperty("context_window", out var cw) && cw.TryGetInt64(out var n6) ? n6 : 0;
+            MaxOutputTokens = el.TryGetProperty("max_output_tokens", out var mo) && mo.TryGetInt64(out var n7) ? n7 : 0;
+        }
+    }
+
+    /// <summary>
+    /// 被权限系统拒绝的工具调用记录。
+    /// </summary>
+    public class SdkPermissionDenial
+    {
+        /// <summary>被拒绝的工具名称</summary>
+        public string ToolName { get; }
+        /// <summary>工具调用 ID</summary>
+        public string ToolUseId { get; }
+        /// <summary>工具调用输入参数（JSON 字符串）</summary>
+        public string ToolInput { get; }
+
+        public SdkPermissionDenial(JsonElement el)
+        {
+            ToolName = el.TryGetProperty("tool_name", out var tn) ? tn.GetString() ?? "" : "";
+            ToolUseId = el.TryGetProperty("tool_use_id", out var ti) ? ti.GetString() ?? "" : "";
+            ToolInput = el.TryGetProperty("tool_input", out var inp) ? inp.GetRawText() : "{}";
+        }
+    }
+
+    /// <summary>
+    /// 已加载的插件信息。
+    /// </summary>
+    public class SdkPluginInfo
+    {
+        /// <summary>插件名称</summary>
+        public string Name { get; }
+        /// <summary>插件目录路径</summary>
+        public string Path { get; }
+        /// <summary>插件来源标识（name@marketplace 格式）</summary>
+        public string? Source { get; }
+
+        public SdkPluginInfo(string name, string path, string? source)
+        { Name = name; Path = path; Source = source; }
     }
 
     /// <summary>
@@ -570,5 +756,49 @@ namespace RimWorldAgent.Core.CcbManager
         /// <summary>当前连接状态：connected / failed / needs-auth / pending / disabled</summary>
         public string Status { get; }
         public SdkMcpServerInfo(string name, string status) { Name = name; Status = status; }
+    }
+
+    /// <summary>
+    /// 上下文压缩元数据（subtype=compact_boundary 时携带）。
+    /// </summary>
+    public class SdkCompactMetadata
+    {
+        /// <summary>触发方式：manual（手动）/ auto（自动）</summary>
+        public string Trigger { get; }
+        /// <summary>压缩前 Token 数</summary>
+        public long PreTokens { get; }
+        /// <summary>保留段的头消息 UUID</summary>
+        public string? PreservedHeadUuid { get; }
+        /// <summary>保留段的锚点 UUID（摘要/分界在此处插入）</summary>
+        public string? PreservedAnchorUuid { get; }
+        /// <summary>保留段的尾消息 UUID</summary>
+        public string? PreservedTailUuid { get; }
+
+        public SdkCompactMetadata(JsonElement el)
+        {
+            Trigger = el.TryGetProperty("trigger", out var tr) ? tr.GetString() ?? "" : "";
+            PreTokens = el.TryGetProperty("pre_tokens", out var pt) && pt.TryGetInt64(out var n) ? n : 0;
+            if (el.TryGetProperty("preserved_segment", out var ps))
+            {
+                PreservedHeadUuid = ps.TryGetProperty("head_uuid", out var h) ? h.GetString() : null;
+                PreservedAnchorUuid = ps.TryGetProperty("anchor_uuid", out var a) ? a.GetString() : null;
+                PreservedTailUuid = ps.TryGetProperty("tail_uuid", out var t) ? t.GetString() : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 记忆文件路径配置（subtype=init 运行时字段）。
+    /// 例如 {"auto":"C:\\Users\\...\\memory\\"}
+    /// </summary>
+    public class SdkMemoryPaths
+    {
+        /// <summary>自动加载的记忆目录路径</summary>
+        public string? Auto { get; }
+
+        public SdkMemoryPaths(JsonElement el)
+        {
+            Auto = el.TryGetProperty("auto", out var a) ? a.GetString() : null;
+        }
     }
 }

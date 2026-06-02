@@ -48,6 +48,8 @@ namespace RimWorldAgent
         public static string CurrentModel = "";
         public static string SessionId = "";
         public static string AgentStatus = "";
+        public static bool CompactionActive;
+        public static long ContextWindow;
 
         private static readonly List<ChatEntry> _entries = new();
         private static readonly List<ToolCallInfo> _toolCalls = new();
@@ -367,7 +369,10 @@ namespace RimWorldAgent
                         var subtype = root.TryGetProperty("subtype", out var srs) ? srs.GetString() ?? "" : "";
                         var used = root.TryGetProperty("used", out var u) ? u.GetInt64() : 0;
                         var limit = root.TryGetProperty("limit", out var l) ? l.GetInt64() : 0;
-                        EnqueueUiEvent(() => { FinishStreaming(); UpdateBudget(subtype, used, limit); });
+                        var cacheR = root.TryGetProperty("cacheRead", out var cr) ? cr.GetInt64() : 0;
+                        var totalIn = root.TryGetProperty("totalInput", out var ti) ? ti.GetInt64() : 0;
+                        var cacheC = root.TryGetProperty("cacheCreate", out var cc) ? cc.GetInt64() : 0;
+                        EnqueueUiEvent(() => { FinishStreaming(); UpdateBudget(subtype, used, limit, cacheR, totalIn, cacheC); });
                         break;
                     }
                     case "aborted":
@@ -408,11 +413,22 @@ namespace RimWorldAgent
                     {
                         var used = root.TryGetProperty("used", out var bu) ? bu.GetInt64() : 0;
                         var limit = root.TryGetProperty("limit", out var bl) ? bl.GetInt64() : 0;
-                        EnqueueUiEvent(() => UpdateBudget(ubtype: "", used, limit));
+                        var cacheR = root.TryGetProperty("cacheRead", out var cr) ? cr.GetInt64() : 0;
+                        var totalIn = root.TryGetProperty("totalInput", out var ti) ? ti.GetInt64() : 0;
+                        var cacheC = root.TryGetProperty("cacheCreate", out var cc) ? cc.GetInt64() : 0;
+                        var ctxWin = root.TryGetProperty("contextWindow", out var cw) ? cw.GetInt64() : 0;
+                        EnqueueUiEvent(() =>
+                        {
+                            ContextWindow = ctxWin;
+                            UpdateBudget("", used, limit, cacheR, totalIn, cacheC);
+                        });
                         break;
                     }
                     case "agent-status":
                         AgentStatus = root.TryGetProperty("role", out var ar) ? ar.GetString() ?? "" : "";
+                        break;
+                    case "compaction-status":
+                        CompactionActive = root.TryGetProperty("active", out var ca) && ca.GetBoolean();
                         break;
                     case "sdk-tasks":
                         break;
@@ -424,15 +440,25 @@ namespace RimWorldAgent
             }
         }
 
-        private static void UpdateBudget(string ubtype, long used, long limit)
+        private static void UpdateBudget(string ubtype, long used, long limit, long cacheRead = 0, long totalInput = 0, long cacheCreate = 0)
         {
             static string Fmt(long v) => v >= 1_000_000 ? $"{v / 1_000_000f:F1}M" : v >= 1000 ? $"{v / 1000f:F0}K" : v.ToString();
 
             CurrentBudgetText = $"Token: {Fmt(used)}/{(limit > 0 ? Fmt(limit) : "--")}";
 
+            // 缓存命中率
+            long totalInWithCache = totalInput + cacheRead + cacheCreate;
+            if (totalInWithCache > 0)
+            {
+                double cachePct = (double)cacheRead / totalInWithCache * 100.0;
+                CurrentBudgetText += $"  缓存 {Fmt(cacheRead)}({cachePct:F0}%)";
+            }
+
+            // 百分比条
             if (limit > 0 && used > 0)
             {
                 CurrentBudgetPercent = (float)((double)used / limit * 100.0);
+                CurrentBudgetText += $"  ({CurrentBudgetPercent:F0}%)";
                 CurrentBudgetStatus = used >= limit ? BudgetStatus.Exceeded
                     : CurrentBudgetPercent >= 95f ? BudgetStatus.Critical
                     : CurrentBudgetPercent >= 80f ? BudgetStatus.Warning

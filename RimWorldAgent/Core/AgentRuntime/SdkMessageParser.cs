@@ -26,6 +26,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                         break;
                     case SdkResultMessage rm:
                         result.Add(UiMessage.Result(rm.Subtype, rm.StopReason));
+                        // 会话真实耗时（per-assistant 的 Record 调用中 durationMs 始终为 0）
+                        TokenUsageTracker.Record(0, 0, 0, 0, rm.DurationMs ?? 0);
                         break;
                     case SdkSystemMessage sm:
                         if (sm.Subtype == "init")
@@ -56,10 +58,14 @@ namespace RimWorldAgent.Core.AgentRuntime
 
         private static void ParseAssistant(SdkAssistantMessage msg, List<UiMessage> outList)
         {
-            // Token 用量
+            // Token 用量 + 上下文窗口
             if (msg.Usage != null)
+            {
                 TokenUsageTracker.Record(msg.Usage.InputTokens, msg.Usage.OutputTokens,
                     msg.Usage.CacheReadInputTokens ?? 0, msg.Usage.CacheCreationInputTokens ?? 0, 0);
+                if (msg.Usage.ContextWindow.HasValue)
+                    TokenUsageTracker.CurrentContextWindow = msg.Usage.ContextWindow.Value;
+            }
 
             // 积累 text + thinking 文本，用于会话录制
             var textAccum = new System.Text.StringBuilder();

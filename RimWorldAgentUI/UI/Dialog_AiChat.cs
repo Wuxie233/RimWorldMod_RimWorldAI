@@ -260,10 +260,13 @@ namespace RimWorldAgent
             Widgets.Label(new Rect(rect.x, rect.y + 2f, rect.width * 0.55f, rect.height - 2f), header);
             GUI.color = Color.white;
 
-            // Token 消耗右对齐
+            // Token 消耗右对齐（含窗口大小）
             string tokenText = ChatDisplayState.CurrentBudgetText;
             if (string.IsNullOrEmpty(tokenText))
                 tokenText = "Token: --";
+            long ctxWin = ChatDisplayState.ContextWindow;
+            if (ctxWin > 0)
+                tokenText = $"(窗口:{ctxWin / 1000f:F0}K)  {tokenText}";
             float tokenW = Text.CalcSize(tokenText).x;
             Text.Font = GameFont.Tiny;
             GUI.color = new Color(0.5f, 0.55f, 0.65f, _alpha);
@@ -664,6 +667,19 @@ namespace RimWorldAgent
             GUI.color = statusColor2;
             Widgets.Label(phaseRect, statusLabel);
             GUI.color = Color.white;
+
+            // 上下文压缩状态
+            if (ChatDisplayState.CompactionActive)
+            {
+                string compLabel = "压缩中…";
+                float compX = phaseRect.xMax + 6f;
+                float compW = Text.CalcSize(compLabel).x + 4f;
+                Rect compRect = new Rect(compX, y, compW + 8f, btnH);
+                Text.Font = GameFont.Tiny;
+                GUI.color = new Color(0.7f, 0.5f, 0.15f, _alpha);
+                Widgets.Label(compRect, compLabel);
+                GUI.color = Color.white;
+            }
 
             // 透明度
             float alphaX = phaseRect.xMax + 8f;

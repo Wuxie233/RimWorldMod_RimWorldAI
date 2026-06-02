@@ -29,6 +29,7 @@ public class CcbWebSocket : IDisposable
     private int _reconnectAttempts;
     private bool _reconnecting;
     private volatile bool _shuttingDown;
+    private bool _ttftLogged;
     private const int MaxReconnectDelayMs = 60000;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -226,6 +227,11 @@ public class CcbWebSocket : IDisposable
                     break;
 
                 case SdkStreamEventMessage sem:
+                    if (sem.TtftMs.HasValue && !_ttftLogged)
+                    {
+                        _ttftLogged = true;
+                        CoreLog.Info($"[CcbWS] TTFT={sem.TtftMs.Value}ms");
+                    }
                     OnAssistantTextOrThinking(sem);
                     break;
 
@@ -239,7 +245,16 @@ public class CcbWebSocket : IDisposable
 
                 case SdkSystemMessage sm:
                     if (sm.Subtype == "init")
+                    {
                         TokenUsageTracker.CurrentModel = sm.Model ?? "";
+                        _ttftLogged = false;
+                    }
+                    else if (sm.Subtype == "status")
+                    {
+                        var isCompacting = sm.Status == "compacting";
+                        AgentOrchestrator.IsCompacting = isCompacting;
+                        UIMessageBus.PushUiMessage(UiMessage.CompactionStatus(isCompacting));
+                    }
                     break;
 
                 case SdkUnknownMessage unk:
