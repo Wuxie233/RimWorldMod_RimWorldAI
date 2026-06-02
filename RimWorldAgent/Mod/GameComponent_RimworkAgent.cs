@@ -82,10 +82,10 @@ namespace RimWorldAgent
                 };
 
                 _engine = new AgentEngine(cfg, dbStore, gameState,
-                    logInfo: msg => Log.Message($"[agent-core] {msg}"),
-                    logError: msg => Log.Error($"[agent-core] {msg}"),
-                    logDebug: msg => Log.Message($"[agent-core] {msg}"),
-                    logWarn: msg => Log.Warning($"[agent-core] {msg}"));
+                    logInfo: msg => SafeLog.Info($"[agent-core] {msg}"),
+                    logError: msg => SafeLog.Error($"[agent-core] {msg}"),
+                    logDebug: msg => SafeLog.Info($"[agent-core] {msg}"),
+                    logWarn: msg => SafeLog.Warning($"[agent-core] {msg}"));
 
                 await _engine.InitAsync();
                 CoreLog.Info($"[agent-mod] 内部工具已注册 ({InternalToolRegistry.Instance.All.Count}): {string.Join(", ", InternalToolRegistry.Instance.All.Select(t => t.Name))}");
@@ -127,6 +127,7 @@ namespace RimWorldAgent
         public override void GameComponentUpdate()
         {
             base.GameComponentUpdate();
+            SafeLog.Flush();
             if (!_initialized || _engine == null) return;
 
             _engine.Tick();
