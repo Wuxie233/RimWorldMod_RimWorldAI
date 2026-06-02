@@ -189,11 +189,11 @@ namespace RimWorldAgent.Core.CcbManager
             Uuid = Str(root, "uuid");
             SessionId = Str(root, "session_id");
             ParentToolUseId = Str(root, "parent_tool_use_id");
-            Index = Int(root, "index");
             TtftMs = Long(root, "ttft_ms");
 
             if (root.TryGetProperty("event", out var evt))
             {
+                Index = Int(evt, "index");
                 var et = Str(evt, "type") ?? "";
                 if (et == "content_block_start")
                 {
@@ -638,8 +638,9 @@ namespace RimWorldAgent.Core.CcbManager
     // ===== 辅助类型 =====
 
     /// <summary>
-    /// Token 使用统计。
-    /// 包含输入/输出 token 数、prompt cache 命中/写入、web 搜索、费用、窗口信息。
+    /// Token 使用统计（对齐 @anthropic-ai/sdk Usage 接口）。
+    /// 仅包含 Anthropic API 原始响应的 8 个字段。
+    /// SDK enrich 字段（contextWindow/costUSD/maxOutputTokens）见 SdkModelUsage。
     /// </summary>
     public class SdkUsage
     {
@@ -651,14 +652,14 @@ namespace RimWorldAgent.Core.CcbManager
         public long? CacheReadInputTokens { get; }
         /// <summary>新写入 prompt cache 的 token 数（缓存创建）</summary>
         public long? CacheCreationInputTokens { get; }
-        /// <summary>Web 搜索请求次数</summary>
-        public long? WebSearchRequests { get; }
-        /// <summary>费用（美元）</summary>
-        public double? CostUsd { get; }
-        /// <summary>上下文窗口大小</summary>
-        public long? ContextWindow { get; }
-        /// <summary>最大输出 Token 数</summary>
-        public long? MaxOutputTokens { get; }
+        /// <summary>缓存 TTL 分布（1h/5m 两级）</summary>
+        public SdkCacheCreation? CacheCreation { get; }
+        /// <summary>服务端工具调用统计（web_fetch + web_search 请求数）</summary>
+        public SdkServerToolUsage? ServerToolUse { get; }
+        /// <summary>推理服务等级：standard / priority / batch</summary>
+        public string? ServiceTier { get; }
+        /// <summary>推理地理区域</summary>
+        public string? InferenceGeo { get; }
 
         public SdkUsage(JsonElement usage)
         {
@@ -666,10 +667,47 @@ namespace RimWorldAgent.Core.CcbManager
             OutputTokens = usage.TryGetProperty("output_tokens", out var o) && o.TryGetInt64(out var n2) ? n2 : 0;
             CacheReadInputTokens = usage.TryGetProperty("cache_read_input_tokens", out var cr) && cr.TryGetInt64(out var n3) ? n3 : (long?)null;
             CacheCreationInputTokens = usage.TryGetProperty("cache_creation_input_tokens", out var cc) && cc.TryGetInt64(out var n4) ? n4 : (long?)null;
-            WebSearchRequests = usage.TryGetProperty("web_search_requests", out var wr) && wr.TryGetInt64(out var n5) ? n5 : (long?)null;
-            CostUsd = usage.TryGetProperty("cost_usd", out var cu) && cu.TryGetDouble(out var d) ? d : (double?)null;
-            ContextWindow = usage.TryGetProperty("context_window", out var cw) && cw.TryGetInt64(out var n6) ? n6 : (long?)null;
-            MaxOutputTokens = usage.TryGetProperty("max_output_tokens", out var mo) && mo.TryGetInt64(out var n7) ? n7 : (long?)null;
+            if (usage.TryGetProperty("cache_creation", out var cce) && cce.ValueKind != JsonValueKind.Null)
+                CacheCreation = new SdkCacheCreation(cce);
+            if (usage.TryGetProperty("server_tool_use", out var st) && st.ValueKind != JsonValueKind.Null)
+                ServerToolUse = new SdkServerToolUsage(st);
+            ServiceTier = usage.TryGetProperty("service_tier", out var tier) && tier.ValueKind != JsonValueKind.Null ? tier.GetString() : null;
+            InferenceGeo = usage.TryGetProperty("inference_geo", out var ig) && ig.ValueKind != JsonValueKind.Null ? ig.GetString() : null;
+        }
+    }
+
+    /// <summary>
+    /// Cache TTL 分布（@anthropic-ai/sdk CacheCreation）。
+    /// Anthropic API 有两级 prompt cache：5 分钟和 1 小时。
+    /// </summary>
+    public class SdkCacheCreation
+    {
+        /// <summary>1 小时缓存写入 token 数</summary>
+        public long Ephemeral1hInputTokens { get; }
+        /// <summary>5 分钟缓存写入 token 数</summary>
+        public long Ephemeral5mInputTokens { get; }
+
+        public SdkCacheCreation(JsonElement el)
+        {
+            Ephemeral1hInputTokens = el.TryGetProperty("ephemeral_1h_input_tokens", out var h) && h.TryGetInt64(out var n) ? n : 0;
+            Ephemeral5mInputTokens = el.TryGetProperty("ephemeral_5m_input_tokens", out var m) && m.TryGetInt64(out var n2) ? n2 : 0;
+        }
+    }
+
+    /// <summary>
+    /// 服务端工具调用统计（@anthropic-ai/sdk ServerToolUsage）。
+    /// </summary>
+    public class SdkServerToolUsage
+    {
+        /// <summary>Web Fetch 工具请求次数</summary>
+        public long WebFetchRequests { get; }
+        /// <summary>Web Search 工具请求次数</summary>
+        public long WebSearchRequests { get; }
+
+        public SdkServerToolUsage(JsonElement el)
+        {
+            WebFetchRequests = el.TryGetProperty("web_fetch_requests", out var wf) && wf.TryGetInt64(out var n) ? n : 0;
+            WebSearchRequests = el.TryGetProperty("web_search_requests", out var ws) && ws.TryGetInt64(out var n2) ? n2 : 0;
         }
     }
 
