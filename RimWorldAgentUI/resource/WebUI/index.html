@@ -184,6 +184,8 @@
   .hdr-budget .budget-bar.warning { background: var(--amber); }
   .hdr-budget .budget-bar.danger { background: var(--red); }
   .hdr-budget .cache-rate { color: var(--muted); margin-left: 2px; }
+  .hdr-budget .hdr-sep { color: var(--border-strong); margin: 0 2px; }
+  .hdr-budget .ctx-window { color: var(--muted); }
   .think-dd {
     position: relative; margin-left: auto; font-size: 11px;
   }
@@ -996,21 +998,29 @@
     var totalInput = data.totalInput || 0;
     var cacheCreate = data.cacheCreate || 0;
     var contextWindow = data.contextWindow || 0;
+    var inputTokens = data.inputTokens || 0;
     var fmt = function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : String(v); };
-    var ctxHtml = contextWindow > 0 ? '<span class="ctx-window">(窗口:' + (contextWindow/1000).toFixed(0) + 'K)</span> ' : '';
-    var cacheHtml = '';
+
+    var parts = [];
+    // ① 窗口用量: 入 12K/200K 6%
+    if (contextWindow > 0 && inputTokens > 0) {
+      var ctxPct = Math.round(inputTokens / contextWindow * 100);
+      parts.push('<span class="ctx-window">入 ' + fmt(inputTokens) + '/' + fmt(contextWindow) + ' ' + ctxPct + '%</span>');
+    }
+    // ② Token 预算: Tok 43K/200K 85%
+    var tokPart = 'Tok ' + fmt(used) + '/' + (limit > 0 ? fmt(limit) : '--');
+    if (limit > 0 && used > 0) {
+      var pct = Math.round(used / limit * 100);
+      var barCls = pct >= 95 ? ' danger' : pct >= 80 ? ' warning' : '';
+      tokPart += ' ' + pct + '% <span class="budget-bar' + barCls + '"></span>';
+    }
+    parts.push(tokPart);
+    // ③ 缓存命中: 缓存 12K 35%
     if (totalInput + cacheRead + cacheCreate > 0) {
       var cachePct = Math.round(cacheRead / (totalInput + cacheRead + cacheCreate) * 100);
-      cacheHtml = ' <span class="cache-rate">缓存 ' + fmt(cacheRead) + '(' + cachePct + '%)</span>';
+      parts.push('<span class="cache-rate">缓存 ' + fmt(cacheRead) + ' ' + cachePct + '%</span>');
     }
-    if (limit <= 0) {
-      hdrBudget.innerHTML = ctxHtml + 'Token ' + (used > 0 ? fmt(used) : '--') + cacheHtml;
-      return;
-    }
-    var pct = used / limit * 100;
-    var barCls = pct >= 95 ? ' danger' : pct >= 80 ? ' warning' : '';
-    hdrBudget.innerHTML = ctxHtml + 'Token ' + fmt(used) + '/' + fmt(limit) +
-      ' <span class="budget-bar' + barCls + '"></span>' + cacheHtml;
+    hdrBudget.innerHTML = parts.join(' <span class="hdr-sep">│</span> ');
   }
 
   function updateToolCount() {

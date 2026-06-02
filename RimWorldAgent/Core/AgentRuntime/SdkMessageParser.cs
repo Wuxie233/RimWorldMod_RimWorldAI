@@ -65,6 +65,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     msg.Usage.CacheReadInputTokens ?? 0, msg.Usage.CacheCreationInputTokens ?? 0, 0);
                 if (msg.Usage.ContextWindow.HasValue)
                     TokenUsageTracker.CurrentContextWindow = msg.Usage.ContextWindow.Value;
+                TokenUsageTracker.CurrentInputTokens = msg.Usage.InputTokens;
             }
 
             // 积累 text + thinking 文本，用于会话录制

@@ -69,7 +69,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                     socket.Send(UiMessage.BudgetStatus(
                         TokenUsageTracker.TotalAllTokens, BudgetLimit, "Idle",
                         TokenUsageTracker.TotalCacheReadTokens, TokenUsageTracker.TotalInputTokens,
-                        TokenUsageTracker.TotalCacheCreateTokens, TokenUsageTracker.CurrentContextWindow).ToJson());
+                        TokenUsageTracker.TotalCacheCreateTokens, TokenUsageTracker.CurrentContextWindow,
+                        TokenUsageTracker.CurrentInputTokens).ToJson());
                 }
                 catch { }
                 try

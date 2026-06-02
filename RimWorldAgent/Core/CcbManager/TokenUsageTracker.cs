@@ -37,6 +37,8 @@ namespace RimWorldAgent
         public static long TotalDurationMs => EnsureDb().TotalDurationMs;
         /// <summary>当前 SDK 上下文窗口大小（来自 assistant 消息 usage）</summary>
         public static long CurrentContextWindow { get; set; }
+        /// <summary>最近一次请求的输入 token 数（反映当前上下文实际用量）</summary>
+        public static long CurrentInputTokens { get; set; }
 
         public static void Record(string model, long inputTokens, long outputTokens,
             long cacheRead, long cacheCreate, long durationMs)

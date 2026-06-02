@@ -161,21 +161,37 @@ C# 侧：`CcbWebSocket.ReceiveLoop` → `SdkMessage.FromJson` → `OnSdkMessage`
 
 所有消息继承 `UiMessage` 基类，`ToJson()` 序列化后 WS 广播。
 
-| type | C# 类 | 字段 | 说明 |
-|------|-------|------|------|
-| `text_delta` | `UiTextDelta` | `text` | 流式文本增量（空串=新 block 开始） |
-| `thinking_delta` | `UiThinkingDelta` | `thinking` | 流式思考增量（空串=新 block 开始） |
-| `text_block` | `UiTextBlock` | `text` | 完整文本块 |
-| `tool_call` | `UiToolCall` | `id`, `name`, `input` | 工具调用请求（stream_event block_start{tool_use} 推送名称，assistant 推送完整 input） |
-| `tool_result` | `UiToolResult` | `id`, `isError`, `durationMs`, `content?` | 工具执行结果（从 SDK user 消息提取） |
-| `result` | `UiResult` | `subtype`, `stop_reason` | 会话结束 |
-| `aborted` | `UiAborted` | (无) | 中断确认 |
-| `system_init` | `UiSystemInit` | `model`, `session_id` | SDK 初始化信息 |
-| `error` | `UiError` | `error` | 错误消息 |
-| `user` | `UiUser` | `text` | 用户消息回显 |
-| `system` | `UiSystem` | `text` | 系统消息（暂停提醒等） |
-| `budget_status` | `UiBudgetStatus` | `used`, `limit`, `action`, `cacheRead`, `totalInput`, `cacheCreate` | Token 预算状态 |
-| `agent-status` | `UiAgentStatus` | `role` | Agent 阶段状态（PLAN / ACT / 休眠） |
+```
+┌─ Dialog_AiChat ──────────────────────────────────────────────────────────────────────┐
+│ 冰盖 · 1年 夏第5天                   入 12K/200K 6% │ Tok 43K/200K 85% │ 缓存 12K 35% │ ← header
+│ ─────────────────────────────────────────────────────────────────────────────────── │
+│ ┌─ 对话 (text_delta / thinking_delta) ──────┐ ┌─ 工具调用 (tool_call / tool_result) ┐│
+│ │ [user] 查看殖民地状态                       │ │ #1 ✓ get_colony  1.2s               ││
+│ │ [AI思考中] 让我想想...                      │ │ #2 ◎ search_items                  ││
+│ │ [AI] 下一步建议：扩大种植区。                │ │ #3 ✓ read_memory  0.5s              ││
+│ └─────────────────────────────────────────────┘ │ [右栏下: 任务 (TaskCreate/Update)]  ││
+│                                                 └───────────────────────────────────┘│
+│ > 查看所有殖民者的健康状态________________________________________________ [发送]        │ ← 输入
+│ ● 已连接 │ ACT / 运行 │ ⏳ 压缩中… │ 透明 [-] [+]         清空  继续  中断              │ ← 底栏
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
+底栏状态来源: agent-status(role) │ compaction-status(active) │ BridgeConnected
+```
+
+| type | C# 类 | 字段 | 渲染位置 |
+|------|-------|------|---------|
+| `text_delta` | `UiTextDelta` | `text` | 左栏·对话流（空串=新条目开始） |
+| `thinking_delta` | `UiThinkingDelta` | `thinking` | 左栏·"AI思考中"标签 + 橙色文本 |
+| `tool_call` | `UiToolCall` | `id`, `name`, `input` | 右栏上·工具卡片（◎运行中/✓完成/✗失败） |
+| `tool_result` | `UiToolResult` | `id`, `isError`, `durationMs`, `content?` | 右栏上·卡片状态+耗时更新 |
+| `result` | `UiResult` | `subtype`, `stop_reason` | 结束流式条目 |
+| `aborted` | `UiAborted` | (无) | 流式条目追加"（已中断）" |
+| `system_init` | `UiSystemInit` | `model`, `session_id` | 内部使用 |
+| `user` | `UiUser` | `text` | 左栏·新建 [你] 条目 |
+| `system` | `UiSystem` | `text` | 左栏·[系统] 条目 |
+| `budget_status` | `UiBudgetStatus` | `used`, `limit`, `action`, `cacheRead`, `totalInput`, `cacheCreate`, `contextWindow`, `inputTokens` | header 三指标 |
+| `agent-status` | `UiAgentStatus` | `role` | 底栏 "ACT / 运行" |
+| `compaction-status` | `UiCompactionStatus` | `active` | 底栏 "⏳ 压缩中…" |
 
 ##### UI → Agent（客户端消息）
 
@@ -197,7 +213,7 @@ C# 侧：`UIMessageBus.OnMessage` → `OnChat`/`OnAbort`/`OnHistory`/`OnHistoryB
 - `RunSessionAsync` 发送 System Prompt 后 → `RecordSystemMessage` + `PushUiMessage(System)`
 - `WireEvents.OnGameEvent` 游戏事件 → `PushUiMessage(User)` + `RecordUserMessage`（与 SDK 文本一致）
 
-新客户端连接：`OnClientConnected` → 推送 `agent-status` + `budget_status` 初始状态。
+新客户端连接：`OnClientConnected` → 推送 `agent-status` + `budget_status` + `compaction-status` 初始状态。
 阶段变化：`AgentOrchestrator.OnStatusChanged` → `UiAgentStatus` WS 广播。
 
 ---

@@ -50,6 +50,7 @@ namespace RimWorldAgent
         public static string AgentStatus = "";
         public static bool CompactionActive;
         public static long ContextWindow;
+        public static long CurrentInputTokens;
 
         private static readonly List<ChatEntry> _entries = new();
         private static readonly List<ToolCallInfo> _toolCalls = new();
@@ -417,10 +418,12 @@ namespace RimWorldAgent
                         var totalIn = root.TryGetProperty("totalInput", out var ti) ? ti.GetInt64() : 0;
                         var cacheC = root.TryGetProperty("cacheCreate", out var cc) ? cc.GetInt64() : 0;
                         var ctxWin = root.TryGetProperty("contextWindow", out var cw) ? cw.GetInt64() : 0;
+                        var inTok = root.TryGetProperty("inputTokens", out var it) ? it.GetInt64() : 0;
                         EnqueueUiEvent(() =>
                         {
                             ContextWindow = ctxWin;
-                            UpdateBudget("", used, limit, cacheR, totalIn, cacheC);
+                            CurrentInputTokens = inTok;
+                            UpdateBudget("", used, limit, cacheR, totalIn, cacheC, inTok);
                         });
                         break;
                     }
@@ -440,30 +443,46 @@ namespace RimWorldAgent
             }
         }
 
-        private static void UpdateBudget(string ubtype, long used, long limit, long cacheRead = 0, long totalInput = 0, long cacheCreate = 0)
+        private static void UpdateBudget(string ubtype, long used, long limit, long cacheRead = 0, long totalInput = 0, long cacheCreate = 0, long inputTokens = 0)
         {
             static string Fmt(long v) => v >= 1_000_000 ? $"{v / 1_000_000f:F1}M" : v >= 1000 ? $"{v / 1000f:F0}K" : v.ToString();
 
-            CurrentBudgetText = $"Token: {Fmt(used)}/{(limit > 0 ? Fmt(limit) : "--")}";
+            var parts = new System.Text.StringBuilder();
 
-            // 缓存命中率
-            long totalInWithCache = totalInput + cacheRead + cacheCreate;
-            if (totalInWithCache > 0)
+            // ① 窗口用量: 入 12K/200K 6%
+            long ctxWin = ContextWindow;
+            if (ctxWin > 0 && inputTokens > 0)
             {
-                double cachePct = (double)cacheRead / totalInWithCache * 100.0;
-                CurrentBudgetText += $"  缓存 {Fmt(cacheRead)}({cachePct:F0}%)";
+                double ctxPct = (double)inputTokens / ctxWin * 100.0;
+                parts.Append($"入 {Fmt(inputTokens)}/{Fmt(ctxWin)} {ctxPct:F0}%");
             }
 
-            // 百分比条
+            // ② Token 预算: Tok 43K/200K 85%
+            if (parts.Length > 0) parts.Append("  │  ");
+            parts.Append("Tok ");
+            parts.Append(Fmt(used));
+            parts.Append("/");
+            parts.Append(limit > 0 ? Fmt(limit) : "--");
             if (limit > 0 && used > 0)
             {
                 CurrentBudgetPercent = (float)((double)used / limit * 100.0);
-                CurrentBudgetText += $"  ({CurrentBudgetPercent:F0}%)";
+                parts.Append($" {CurrentBudgetPercent:F0}%");
                 CurrentBudgetStatus = used >= limit ? BudgetStatus.Exceeded
                     : CurrentBudgetPercent >= 95f ? BudgetStatus.Critical
                     : CurrentBudgetPercent >= 80f ? BudgetStatus.Warning
                     : BudgetStatus.Ok;
             }
+
+            // ③ 缓存命中: 缓存 12K 35%
+            long totalInWithCache = totalInput + cacheRead + cacheCreate;
+            if (totalInWithCache > 0)
+            {
+                double cachePct = (double)cacheRead / totalInWithCache * 100.0;
+                if (parts.Length > 0) parts.Append("  │  ");
+                parts.Append($"缓存 {Fmt(cacheRead)} {cachePct:F0}%");
+            }
+
+            CurrentBudgetText = parts.ToString();
         }
     }
 }

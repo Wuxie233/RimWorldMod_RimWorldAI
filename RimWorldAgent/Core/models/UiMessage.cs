@@ -20,8 +20,8 @@ namespace RimWorldAgent.Core
         public static UiError Error(string error) => new UiError(error);
         public static UiUser User(string text) => new UiUser(text);
         public static UiSystem System(string text) => new UiSystem(text);
-        public static UiBudgetStatus BudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate, long contextWindow = 0)
-            => new UiBudgetStatus(used, limit, action, cacheRead, totalInput, cacheCreate, contextWindow);
+        public static UiBudgetStatus BudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate, long contextWindow = 0, long inputTokens = 0)
+            => new UiBudgetStatus(used, limit, action, cacheRead, totalInput, cacheCreate, contextWindow, inputTokens);
         public static UiAgentStatus AgentStatus(string role) => new UiAgentStatus(role);
         public static UiCompactionStatus CompactionStatus(bool active) => new UiCompactionStatus(active);
     }
@@ -121,8 +121,9 @@ namespace RimWorldAgent.Core
         public long totalInput { get; }
         public long cacheCreate { get; }
         public long contextWindow { get; }
-        public UiBudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate, long contextWindow = 0)
-        { this.used = used; this.limit = limit; this.action = action; this.cacheRead = cacheRead; this.totalInput = totalInput; this.cacheCreate = cacheCreate; this.contextWindow = contextWindow; }
+        public long inputTokens { get; }
+        public UiBudgetStatus(long used, long limit, string action, long cacheRead, long totalInput, long cacheCreate, long contextWindow = 0, long inputTokens = 0)
+        { this.used = used; this.limit = limit; this.action = action; this.cacheRead = cacheRead; this.totalInput = totalInput; this.cacheCreate = cacheCreate; this.contextWindow = contextWindow; this.inputTokens = inputTokens; }
     }
 
     public class UiAgentStatus : UiMessage

@@ -8,8 +8,21 @@ using Verse;
 namespace RimWorldAgent
 {
     /// <summary>
-    /// AI 对话窗口 — 双栏布局：左栏对话流，右栏工具调用+任务
-    /// 通过 BridgeClient WS 通信，和 WebUI 共享同一数据源。
+    /// AI 对话窗口，通过 BridgeClient WS 通信，和 WebUI 共享同一数据源。
+    /// <code>
+    /// ┌──────────────────────────────────────────────────────────────────────┐
+    /// │ 冰盖 · 1年 夏第5天            入 12K/200K 6% │ Tok 43K/200K 85% │ 缓存 12K 35% │  ← header
+    /// │ ──────────────────────────────────────────────────────────────────── │
+    /// │ ┌─ 对话 ─────────────────────┐ ┌─ 工具调用 ────┐ ┌─ 任务 ─────────┐ │
+    /// │ │ [你] 查看殖民地状态          │ │ #1 ✓ get_...   │ │ ▶ 补全字段     │ │
+    /// │ │ [AI思考中] 让我想想...       │ │ #2 ◎ search... │ │ ○ 修复编译错误 │ │
+    /// │ │ [AI] 下一步建议：扩大种植区。 │ │ #3 ✓ read_...  │ │               │ │
+    /// │ └────────────────────────────┘ └────────────────┘ └────────────────┘ │
+    /// │ > 查看所有殖民者的健康状态__________________________________ [发送]   │  ← 输入行
+    /// │ ● 已连接 │ ACT / 运行 │ ⏳ 压缩中… │ 透明 [-] [+]   清空  继续  中断 │  ← 底栏
+    /// └──────────────────────────────────────────────────────────────────────┘
+    /// </code>
+    /// 布局：左 60% = 对话流(text_delta/thinking_delta/user/system)，右 40% 上 = 工具卡片(tool_call/tool_result)，右 40% 下 = 任务(TaskCreate/Update)
     /// </summary>
     public class Dialog_AiChat : Window
     {
@@ -260,13 +273,10 @@ namespace RimWorldAgent
             Widgets.Label(new Rect(rect.x, rect.y + 2f, rect.width * 0.55f, rect.height - 2f), header);
             GUI.color = Color.white;
 
-            // Token 消耗右对齐（含窗口大小）
+            // Token 消耗右对齐
             string tokenText = ChatDisplayState.CurrentBudgetText;
             if (string.IsNullOrEmpty(tokenText))
                 tokenText = "Token: --";
-            long ctxWin = ChatDisplayState.ContextWindow;
-            if (ctxWin > 0)
-                tokenText = $"(窗口:{ctxWin / 1000f:F0}K)  {tokenText}";
             float tokenW = Text.CalcSize(tokenText).x;
             Text.Font = GameFont.Tiny;
             GUI.color = new Color(0.5f, 0.55f, 0.65f, _alpha);
