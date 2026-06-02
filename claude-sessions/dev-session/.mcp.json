@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "agent": {
-      "type": "http",
-      "url": "http://localhost:9878/mcp",
-      "timeout": 300000
-    }
-  }
-}

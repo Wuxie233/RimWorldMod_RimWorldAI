@@ -105,10 +105,19 @@ namespace RimWorldAgent.Core.CcbManager
                 }
 
                 _process.EnableRaisingEvents = true;
+                var ccbPid = _process.Id;
                 _process.Exited += (_, _) =>
                 {
                     _ready = false;
-                    CoreLog.Error($"[CcbManager] 进程退出 (code={_process?.ExitCode})");
+                    try
+                    {
+                        var code = _process?.ExitCode ?? -1;
+                        if (code == -1)
+                            CoreLog.Info($"[CcbManager] CCB 已终止 (PID={ccbPid})");
+                        else
+                            CoreLog.Error($"[CcbManager] CCB 异常退出 (PID={ccbPid}, code={code})");
+                    }
+                    catch (Exception ex) { CoreLog.Info($"[CcbManager] 读取退出码异常 (PID={ccbPid}): {ex.GetType().Name}: {ex.Message}"); }
                 };
                 _process.OutputDataReceived += (_, e) =>
                 {
@@ -168,15 +177,22 @@ namespace RimWorldAgent.Core.CcbManager
             {
                 if (_process.HasExited)
                 {
-                    CoreLog.Info($"[CcbManager] 进程已退出 (PID={_process.Id})，无需 kill");
+                    CoreLog.Info($"[CcbManager] 进程已退出 (PID={_process.Id})，无需关闭");
                 }
                 else
                 {
                     var pid = _process.Id;
-                    CoreLog.Info($"[CcbManager] 开始 kill CCB 子进程 (PID={pid})...");
-                    _process.Kill();
-                    _process.WaitForExit(5000);
-                    CoreLog.Info($"[CcbManager] CCB 子进程 kill 完成 (PID={pid})");
+                    CoreLog.Info($"[CcbManager] 正在关闭 CCB (PID={pid})...");
+                    // 尝试优雅退出：关 stdin 让 Node.js 自然结束
+                    try { _process.StandardInput.Close(); } catch (Exception ex) { CoreLog.Info($"[CcbManager] 关闭 stdin 失败 (可忽略): {ex.Message}"); }
+                    var exited = _process.WaitForExit(3000);
+                    if (!exited)
+                    {
+                        CoreLog.Info($"[CcbManager] 超时 3s，Kill CCB (PID={pid})");
+                        _process.Kill();
+                        _process.WaitForExit(5000);
+                    }
+                    CoreLog.Info($"[CcbManager] CCB 已关闭 (PID={pid})");
                 }
             }
             catch (Exception ex) { CoreLog.Info($"[CcbManager] 关闭子进程异常: {ex.Message}"); }
