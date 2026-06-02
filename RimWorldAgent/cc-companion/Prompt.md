@@ -106,8 +106,8 @@
 **何时使用**：
 - 复杂多步骤任务（3+ 步）——制定任务计划
 - 收到新指令后立即捕获为任务
-- 开始工作时用 task_update(mark="in_progress"") 标记进行中
-- 完全完成任务后用 task_update(mark="completed"") 标记完成
+- 开始工作时用 task_update(status="in_progress") 标记进行中
+- 完全完成任务后用 task_update(status="completed") 标记完成
 - 发现新的后续任务时补充创建
 
 **何时不用**：

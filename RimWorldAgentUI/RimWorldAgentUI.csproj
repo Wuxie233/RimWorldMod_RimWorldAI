@@ -54,9 +54,11 @@
     <Copy SourceFiles="@(UIDeps)" DestinationFolder="..\publish\RimWorldAgentUI\1.6\Assemblies" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\About.xml" DestinationFolder="..\publish\RimWorldAgentUI\About" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\Preview.png" DestinationFolder="..\publish\RimWorldAgentUI\About" Condition="Exists('$(MSBuildProjectDirectory)\resource\About\Preview.png')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\About\PublishedFileId.txt" DestinationFolder="..\publish\RimWorldAgentUI\About" Condition="Exists('$(MSBuildProjectDirectory)\resource\About\PublishedFileId.txt')" />
     <!-- WebUI 静态文件 -->
     <MakeDir Directories="..\publish\RimWorldAgentUI\1.6\Assemblies\WebUI" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\resource\WebUI\index.html" DestinationFolder="..\publish\RimWorldAgentUI\1.6\Assemblies\WebUI" Condition="Exists('$(MSBuildProjectDirectory)\resource\WebUI\index.html')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\README.md" DestinationFolder="..\publish\RimWorldAgentUI" Condition="Exists('$(MSBuildProjectDirectory)\README.md')" />
   </Target>
 
 </Project>

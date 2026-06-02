@@ -95,11 +95,9 @@ Companion 进程由 Agent 侧 `CcbManager` 管理（spawn/stop/Job Object 绑定
 | **L3 Critical** | ✅ | ✅ DangerSummary | ✅ | 大威胁、小威胁、死亡、负面、Boss | 大威胁、小威胁、角色死亡、健康事件、负面、游戏减速 | AlertStart (全部) |
 | **L2 Warning** | ✅ | ✅ 计数 | ❌ | 仪式失败 | 警告 | - |
 | **L1 Info** | ✅ | ✅ 计数 | ❌ | 正面、事件、来人、成长、任务、仪式成功 | 正面、事件、完成、状态解除 | - |
-| **L0 Silent** | ❌ | ❌ | ❌ | 选择角色、游戏结束、捆绑 | 拒绝、静默(SilentInput) | - |
+| **L0 Silent** | ✅ | ✅ | ❌ | 选择角色、游戏结束、捆绑 | 拒绝、SilentInput | - |
 
-> **Tool Result Suffix**：Agent 通过 `set_tool_result_suffix` 设置一次性后缀，MCP Server 在下一次工具结果末尾自动追加并清空。实现 Agent → AI 的实时通知注入（双工机制）。详见 `design/tool-result-suffix.md`。
-
-> L0 不占用 AI 注意力——技能升级、操作被拒等原有游戏浮窗提示已足够。
+> 所有级别均通过 SSE 推送。Agent 侧：Critical/Warning 立即中断 + UI/DB，Info/Silent 仅 suffix 注入。**双工机制**：Agent 调用 `set_tool_result_suffix` 设置一次性后缀，MCP Server 在下次工具结果末尾自动追加并清空。详见 `design/tool-result-suffix.md`。
 
 ### 中断通知
 
