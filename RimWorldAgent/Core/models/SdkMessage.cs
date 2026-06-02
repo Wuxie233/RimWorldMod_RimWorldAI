@@ -269,12 +269,19 @@ namespace RimWorldAgent.Core.CcbManager
         public string? FastModeState { get; }
         /// <summary>结构化输出结果（raw JSON）</summary>
         public string? StructuredOutput { get; }
+        /// <summary>API 错误 HTTP 状态码（仅 error 子类型有值）</summary>
+        public int? ApiErrorStatus { get; }
+        /// <summary>首 Token 延迟（ms），result 消息也携带此字段</summary>
+        public long? TtftMs { get; }
+        /// <summary>会话终止原因：completed / interrupted / max_turns 等</summary>
+        public string? TerminalReason { get; }
 
         public SdkResultMessage(string rawJson, JsonElement root) : base(rawJson, "result")
         {
             var known = new HashSet<string> { "type", "subtype", "stop_reason", "is_error", "num_turns",
                 "duration_ms", "duration_api_ms", "result", "total_cost_usd", "usage",
-                "modelUsage", "permission_denials", "errors", "uuid", "session_id", "fast_mode_state", "structured_output" };
+                "modelUsage", "permission_denials", "errors", "uuid", "session_id", "fast_mode_state", "structured_output",
+                "api_error_status", "ttft_ms", "terminal_reason" };
             ValidateFields(root, known, rawJson);
 
             Uuid = Str(root, "uuid");
@@ -289,6 +296,9 @@ namespace RimWorldAgent.Core.CcbManager
             TotalCostUsd = root.TryGetProperty("total_cost_usd", out var cost) ? cost.GetDouble() : (double?)null;
             FastModeState = Str(root, "fast_mode_state");
             StructuredOutput = root.TryGetProperty("structured_output", out var so) && so.ValueKind != JsonValueKind.Null ? so.GetRawText() : null;
+            ApiErrorStatus = Int(root, "api_error_status");
+            TtftMs = Long(root, "ttft_ms");
+            TerminalReason = Str(root, "terminal_reason");
 
             if (root.TryGetProperty("usage", out var usage))
                 Usage = new SdkUsage(usage);

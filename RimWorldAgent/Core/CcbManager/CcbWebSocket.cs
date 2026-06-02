@@ -188,10 +188,18 @@ public class CcbWebSocket : IDisposable
         {
             while (!ct.IsCancellationRequested && _ws?.State == WebSocketState.Open)
             {
-                var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buf), ct);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-                var text = Encoding.UTF8.GetString(buf, 0, result.Count);
-                ProcessMessage(text);
+                var sb = new StringBuilder();
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buf), ct);
+                    sb.Append(Encoding.UTF8.GetString(buf, 0, result.Count));
+                } while (!result.EndOfMessage);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                    break;
+
+                ProcessMessage(sb.ToString());
             }
         }
         catch (OperationCanceledException) { CoreLog.Info("[CcbWS] 接收循环已取消"); }
