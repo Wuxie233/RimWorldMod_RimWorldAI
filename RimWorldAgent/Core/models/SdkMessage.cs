@@ -123,7 +123,7 @@ namespace RimWorldAgent.Core.CcbManager
         [JsonPropertyName("parent_tool_use_id")] public string? ParentToolUseId { get; set; }
         [JsonPropertyName("error")] public string? Error { get; set; }
 
-        [JsonPropertyName("message")] internal AssistMsgBody? AssistMsg { get; set; }
+        [JsonPropertyName("message")] public AssistMsgBody? AssistMsg { get; set; }
 
         /// <summary>消息 ID（message.id）</summary>
         public string? MessageId => AssistMsg?.Id;
@@ -139,7 +139,7 @@ namespace RimWorldAgent.Core.CcbManager
         public string? StopSequence => AssistMsg?.StopSequence;
     }
 
-    internal class AssistMsgBody
+    public class AssistMsgBody
     {
         [JsonPropertyName("id")] public string? Id { get; set; }
         [JsonPropertyName("type")] public string? MsgType { get; set; }
@@ -235,12 +235,13 @@ namespace RimWorldAgent.Core.CcbManager
         [JsonPropertyName("priority")] public string? Priority { get; set; }
         [JsonPropertyName("timestamp")] public string? Timestamp { get; set; }
         [JsonPropertyName("isReplay")] public bool? IsReplay { get; set; }
-        [JsonPropertyName("message")] internal UserMsgBody? UserMsg { get; set; }
+        [JsonPropertyName("tool_use_result")] public JsonElement? ToolUseResultRaw { get; set; }
+        [JsonPropertyName("message")] public UserMsgBody? UserMsg { get; set; }
         /// <summary>内容块列表（text / tool_result）</summary>
         public List<SdkContentBlock> Content => UserMsg?.Content ?? new();
     }
 
-    internal class UserMsgBody
+    public class UserMsgBody
     {
         [JsonPropertyName("role")] public string? Role { get; set; }
         [JsonPropertyName("content")] public List<SdkContentBlock> Content { get; set; } = new();
