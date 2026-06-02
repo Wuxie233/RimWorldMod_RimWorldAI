@@ -299,9 +299,10 @@ namespace RimWorldAgent.Core.CcbManager
     {
         [JsonPropertyName("id")] public string Id { get; set; } = "";
         [JsonPropertyName("name")] public string Name { get; set; } = "";
-        /// <summary>工具调用参数（原始 JSON 字符串）</summary>
-        public string Input { get; set; } = "{}";
-        [JsonPropertyName("input")] internal JsonElement? InputEl { get; set; }
+        /// <summary>工具调用参数（JSON 字符串，由 Converter 从 InputEl 转换）</summary>
+        [JsonIgnore] public string Input { get; set; } = "{}";
+        /// <summary>工具输入参数原始 JSON（SDK 以对象形式发送，net472 必须 public）</summary>
+        [JsonPropertyName("input")] public JsonElement? InputEl { get; set; }
         public SdkToolUseBlock() { BlockType = "tool_use"; }
     }
 
