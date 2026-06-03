@@ -90,19 +90,19 @@ namespace RimWorldAgent.Core.AgentRuntime
         static ToolDispatcher()
         {
             _actPauseRemind = new Reminder("ACT 暂停", ActPauseThreshold,
-                () => "\n\n<system-reminder>\n游戏仍处于暂停状态！你在 ACT 阶段，如需推进工作进度请调用 enter_act(speed=\"暂停/正常/高速/极速\") 恢复游戏。\n</system-reminder>",
+                () => "\n\n<system-reminder>\n⚠️ 游戏仍处于暂停状态！你在 ACT 阶段但游戏时间不推进。请立即调用 enter_act() 恢复游戏。\n</system-reminder>",
                 () => AgentOrchestrator.CurrentPhase == GamePhase.Act && _lastIsPaused);
 
             _actTurnRemind = new Reminder("ACT 执行过久", ActTurnThreshold,
-                () => $"\n\n<system-reminder>\n你已在 ACT 阶段连续执行 {ActTurnThreshold}+ 轮工具调用。建议调用 enter_plan() 暂停游戏、审视进度、更新计划，然后再继续执行。\n</system-reminder>",
+                () => $"\n\n<system-reminder>\n⚠️ 你已在 ACT 阶段连续执行 {ActTurnThreshold}+ 轮工具调用。请调用 enter_plan() 暂停游戏、审视进度、更新计划后再继续。\n</system-reminder>",
                 () => AgentOrchestrator.CurrentPhase == GamePhase.Act);
 
             _planStayRemind = new Reminder("PLAN 停留过久", PlanStayThreshold,
-                () => "\n\n<system-reminder>\n你已在 PLAN 阶段停留较久。制定计划后请调用 enter_act() 恢复游戏执行操作，不要让游戏长时间冻结。\n</system-reminder>",
+                () => "\n\n<system-reminder>\n⚠️ 你已在 PLAN 阶段停留较久，游戏已长时间冻结。请尽快制定计划并调用 enter_act() 恢复游戏。\n</system-reminder>",
                 () => AgentOrchestrator.CurrentPhase == GamePhase.Plan);
 
             _notifRemind = new Reminder("通知堆积", NotifThreshold,
-                () => "\n\n<system-reminder>\n你有未处理的通知，请用 get_notifications 查看并处理。用 dismiss_notification 关闭不需要的通知。\n</system-reminder>",
+                () => "\n\n<system-reminder>\n⚠️ 你有未处理的通知堆积。请立即用 get_notifications 查看，用 dismiss_notification 关闭不需要的通知。\n</system-reminder>",
                 () => _notifReceivedCount > NotifThreshold);
 
             _taskRemind = new Reminder("任务未完成", TaskCheckInterval,
@@ -115,21 +115,21 @@ namespace RimWorldAgent.Core.AgentRuntime
                         lines.Add($"  [{t.Status}] {t.Subject}");
                         if (lines.Count >= 5) break;
                     }
-                    return $"\n\n<system-reminder>\n当前 {copy.Count} 个任务未完成：\n{string.Join("\n", lines)}\n完成的任务请用 task_update 更新状态。\n</system-reminder>";
+                    return $"\n\n<system-reminder>\n⚠️ 当前 {copy.Count} 个任务未完成：\n{string.Join("\n", lines)}\n完成的任务请用 task_update 标记为 completed。\n</system-reminder>";
                 },
                 () => TaskStore.PendingCount > 0);
 
             _taskToolRemind = new Reminder("未使用 task 工具", TaskToolRemindInterval,
-                () => $"\n\n<system-reminder>\n你已连续 {TaskToolRemindInterval}+ 轮工具调用未使用 task_create / task_update。建议调用 task_create 制定任务计划、跟踪执行进度。完成后用 task_update(status=\"completed\") 标记。\n</system-reminder>",
+                () => $"\n\n<system-reminder>\n⚠️ 你已连续 {TaskToolRemindInterval}+ 轮工具调用未使用 task_create / task_update。请立即创建任务计划跟踪进度，完成后用 task_update(status=\"completed\") 标记。\n</system-reminder>",
                 () => true,
                 () => { });  // 无额外动作，计数在 BuildModeSuffixAsync 中清零
 
             _toolOutputRemind = new Reminder("工具输出", ToolOutputRemindInterval,
-                () => "\n\n<system-reminder>\n你已连续调用工具而未输出文本分析。请用自然语言总结当前观察和下一步计划，帮助用户了解进展。\n</system-reminder>",
+                () => "\n\n<system-reminder>\n⚠️ 你已连续调用工具而未输出文本分析。请用自然语言总结当前观察和下一步计划。\n</system-reminder>",
                 () => true);
 
             _worldSummaryRemind = new Reminder("世界摘要刷新", WorldSummaryRefreshInterval,
-                () => "\n\n<system-reminder>\n距上次获取殖民地概况已有一段时间。建议调用 get_world_summary 重新了解全局状态。\n</system-reminder>",
+                () => "\n\n<system-reminder>\n⚠️ 距上次获取殖民地概况已有一段时间。请调用 get_world_summary 刷新全局状态，确保决策基于最新信息。\n</system-reminder>",
                 () => true);
 
             _reminders.AddRange(new[] { _actPauseRemind, _actTurnRemind, _planStayRemind,

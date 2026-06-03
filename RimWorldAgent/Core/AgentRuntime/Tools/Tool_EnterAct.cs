@@ -14,7 +14,8 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             type = "object",
             properties = new
             {
-                speed = new { type = "string", description = "游戏速度: paused, normal, fast, superfast, ultrafast" }
+                speed = new { type = "string", description = "游戏速度: paused, normal, fast, superfast, ultrafast" },
+                reason = new { type = "string", description = "执行原因（可选，日志用）" }
             },
             required = new[] { "speed" }
         });
@@ -24,6 +25,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             var speed = "superfast";
             if (args?.TryGetProperty("speed", out var speedEl) == true)
                 speed = speedEl.GetString() ?? "superfast";
+            var reason = args?.TryGetProperty("reason", out var reasonEl) == true ? reasonEl.GetString() ?? "" : "";
 
             var deadline = DateTime.UtcNow.AddSeconds(3);
             while (AgentOrchestrator.PaceController == null || AgentOrchestrator.SessionMcp == null)
@@ -35,7 +37,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
 
             AgentOrchestrator.EnterActPhase();
             await AgentOrchestrator.PaceController.ResumeForAction(AgentOrchestrator.SessionMcp, speed);
-            return ($"已进入 Act 阶段，游戏速度: {speed}。", false);
+            return ($"已进入 Act 阶段，游戏速度: {speed}。{reason}", false);
         }
     }
 }

@@ -141,8 +141,8 @@ Agent 内部工具（AgentMCP `:9878`），指导 AI 行为：
 |------|------|
 | `get_skills` | 获取可用领域技能列表 |
 | `active_skill` | 激活指定领域技能 |
-| `enter_plan` | 暂停游戏，进入规划阶段 |
-| `enter_act` | 恢复游戏速度，进入执行阶段 |
+| `enter_plan` | 暂停游戏，进入规划阶段（可选 `reason` 参数记录原因） |
+| `enter_act` | 恢复游戏速度，进入执行阶段（可选 `reason` 参数记录原因） |
 | `read_memory` | 读取持久记忆文件 |
 | `update_memory` | 写入/更新持久记忆文件 |
 | `set_tool_result_suffix` | 设置下次工具结果的一次性后缀 |
