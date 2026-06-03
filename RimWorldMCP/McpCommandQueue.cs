@@ -8,6 +8,7 @@ namespace RimWorldMCP
     {
         public Func<object?> Action { get; set; } = null!;
         public TaskCompletionSource<object?> Completion { get; set; } = new();
+        public DateTime EnqueuedAt { get; set; } = DateTime.UtcNow;
     }
 
     public static class McpCommandQueue
@@ -25,16 +26,26 @@ namespace RimWorldMCP
         {
             for (int i = 0; i < MaxCommandsPerFrame && _queue.TryDequeue(out var command); i++)
             {
+                var waitMs = (DateTime.UtcNow - command.EnqueuedAt).TotalMilliseconds;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
                     var result = command.Action();
+                    sw.Stop();
                     command.Completion.TrySetResult(result);
+                    if (sw.Elapsed.TotalMilliseconds > 100 || waitMs > 500)
+                        McpLog.Debug($"[McpCommandQueue] 命令执行: 排队等待 {waitMs:F0}ms, 主线程执行 {sw.Elapsed.TotalMilliseconds:F0}ms");
                 }
                 catch (Exception ex)
                 {
+                    sw.Stop();
+                    McpLog.Warn($"[McpCommandQueue] 命令执行异常: 排队等待 {waitMs:F0}ms, 执行 {sw.Elapsed.TotalMilliseconds:F0}ms, {ex.GetType().Name}: {ex.Message}");
                     command.Completion.TrySetException(ex);
                 }
             }
+
+            if (_queue.Count > 0)
+                McpLog.Debug($"[McpCommandQueue] ProcessPending 本轮结束, 仍积压 {_queue.Count} 个命令");
         }
 
         public static int PendingCount => _queue.Count;
@@ -60,13 +71,16 @@ namespace RimWorldMCP
         /// <summary>调度同步操作到主线程执行，等待结果（超时 5 分钟，适应 advance_tick 等长耗时 Tool）</summary>
         public static async Task<T> DispatchAsync<T>(Func<T> action, int timeoutMs = 300000)
         {
+            var preCount = _queue.Count;
+            if (preCount > 0)
+                McpLog.Debug($"[McpCommandQueue] DispatchAsync 入队前积压 {preCount} 个命令");
             var command = new McpCommand { Action = () => action() };
             _queue.Enqueue(command);
 
             var timeout = Task.Delay(timeoutMs);
             var completed = await Task.WhenAny(command.Completion.Task, timeout);
             if (completed == timeout)
-                throw new TimeoutException("主线程命令执行超时");
+                throw new TimeoutException($"主线程命令执行超时 (积压 {_queue.Count})");
 
             return (T)command.Completion.Task.Result!;
         }
