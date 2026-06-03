@@ -38,6 +38,10 @@ namespace RimWorldAgent.Core.Mcp
 
         private async Task<ModelContextProtocol.Client.McpClient> ConnectAsync()
         {
+            // net472 ServicePointManager.DefaultConnectionLimit = 2，不足以支撑 SSE + 并发 POST
+            System.Net.ServicePointManager.DefaultConnectionLimit = 24;
+            CoreLog.Debug($"[McpClient] ServicePointManager.DefaultConnectionLimit = {System.Net.ServicePointManager.DefaultConnectionLimit}");
+
             var transport = new HttpClientTransport(new HttpClientTransportOptions
             {
                 Endpoint = new Uri(_baseUrl),
@@ -69,7 +73,9 @@ namespace RimWorldAgent.Core.Mcp
 
         public async Task<string> CallToolAsync(string name, Dictionary<string, JsonElement>? args = null)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var client = await GetClientAsync();
+
             IReadOnlyDictionary<string, object?>? sdkArgs = null;
             if (args != null)
             {
@@ -77,7 +83,10 @@ namespace RimWorldAgent.Core.Mcp
                 foreach (var kv in args) dict[kv.Key] = kv.Value;
                 sdkArgs = dict;
             }
+
             var result = await client.CallToolAsync(name, sdkArgs);
+            CoreLog.Debug($"[McpClient] {name} 总耗时 {sw.Elapsed.TotalMilliseconds:F0}ms");
+
             var sb = new StringBuilder();
             foreach (var c in result.Content)
             {

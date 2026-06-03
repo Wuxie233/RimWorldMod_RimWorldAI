@@ -181,7 +181,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     var speed = await AgentOrchestrator.SessionMcp.CallTool("get_game_speed");
                     _lastIsPaused = speed != null && speed.IndexOf("已暂停", StringComparison.Ordinal) >= 0;
                 }
-                catch (Exception ex) { CoreLog.Info($"[ToolDispatcher] 查询游戏速度失败: {ex.Message}"); }
+                catch (Exception ex) { CoreLog.Debug($"[ToolDispatcher] 查询游戏速度失败: {ex.GetType().Name}: {ex.Message}"); }
             }
 
             // 所有提醒 tick

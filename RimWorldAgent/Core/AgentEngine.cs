@@ -112,7 +112,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     _logInfo($"[AgentEngine] 游戏 MCP 已连接 ({tools.Count} 工具)");
                     break;
                 }
-                catch (Exception ex) { _logInfo($"[CCGUI_DEBUG] AgentEngine MCP 就绪检查失败: {ex.GetType().Name}: {ex.Message}"); if (ex.InnerException != null) _logInfo($"[CCGUI_DEBUG] AgentEngine MCP InnerException: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}"); _logInfo($"[AgentEngine] 游戏 MCP 尚未就绪，3s 后重试..."); await Task.Delay(3000); }
+                catch (Exception ex) { _logDebug($"[AgentEngine] MCP 就绪检查失败: {ex.GetType().Name}: {ex.Message}"); if (ex.InnerException != null) _logDebug($"[AgentEngine] MCP InnerException: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}"); _logInfo("[AgentEngine] 游戏 MCP 尚未就绪，3s 后重试..."); await Task.Delay(3000); }
             }
 
             // 游戏事件订阅 + 游戏工具代理 → Agent MCP（必须在 CCB 之前完成）

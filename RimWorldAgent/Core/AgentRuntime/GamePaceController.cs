@@ -63,13 +63,18 @@ namespace RimWorldAgent.Core.AgentRuntime
         {
             try
             {
+                CoreLog.Debug($"[GamePace] toggle_pause({speed}) 开始");
                 var speedElement = JsonSerializer.SerializeToElement(speed);
                 var args = new Dictionary<string, JsonElement> { ["speed"] = speedElement };
                 await mcp.CallTool("toggle_pause", args);
+                CoreLog.Debug($"[GamePace] toggle_pause({speed}) 完成");
             }
             catch (Exception ex)
             {
-                CoreLog.Error($"[GamePace] toggle_pause({speed}) 失败: {ex.Message}");
+                var innerChain = "";
+                for (var e = ex.InnerException; e != null; e = e.InnerException)
+                    innerChain += $" ← {e.GetType().Name}: {e.Message}";
+                CoreLog.Error($"[GamePace] toggle_pause({speed}) 失败: {ex.GetType().Name}: {ex.Message}{innerChain}\n{ex.StackTrace}");
                 throw;
             }
         }

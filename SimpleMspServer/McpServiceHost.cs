@@ -248,7 +248,10 @@ namespace SimpleMspServer
                         var je = d != null && d.Count > 0
                             ? JsonSerializer.SerializeToElement(d)
                             : (JsonElement?)null;
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        _log.Debug($"[McpServiceHost] CallToolHandler 开始: {req.Params!.Name}");
                         var r = await ExecuteAsync(req.Params!.Name, je);
+                        _log.Debug($"[McpServiceHost] CallToolHandler 完成: {req.Params!.Name}, 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms");
                         return new CallToolResult
                         {
                             Content = r.Content.Select(c => (ContentBlock)new TextContentBlock { Text = c.Text }).ToList(),

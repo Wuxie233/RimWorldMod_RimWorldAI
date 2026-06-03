@@ -59,6 +59,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 var dict = args != null
                     ? JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(args.Value.GetRawText())
                     : null;
+
                 var result = await _mcp.CallTool(name, dict);
                 var suffix = await ToolDispatcher.BuildModeSuffixAsync();
 
@@ -76,7 +77,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             catch (Exception ex)
             {
                 sw.Stop();
-                CoreLog.Error($"[ProxyToolProvider] {name} 失败 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms: {ex.Message}");
+                var innerMsg = ex.InnerException != null ? $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
+                CoreLog.Error($"[ProxyToolProvider] {name} 失败 耗时 {sw.Elapsed.TotalMilliseconds:F0}ms: {ex.Message}{innerMsg}");
                 return new MspToolCallResult
                 {
                     IsError = true,
