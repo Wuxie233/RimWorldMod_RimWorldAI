@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using RimWorldMCP.Constants;
 using Verse;
 using RimWorld;
 
@@ -96,7 +97,7 @@ namespace RimWorldMCP.Tools
                         detail = i.Detail
                     })
                 });
-                McpServiceManager.Host?.SendEvent("game/deterioration", payload);
+                McpServiceManager.Host?.SendEvent(McpChannels.GameDeterioration, payload);
             }
             catch (Exception ex) { McpLog.Warn($"[DeteriorationTracker] 推送腐坏警告失败: {ex.Message}"); }
 

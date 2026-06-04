@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using RimWorld;
+using RimWorldMCP.Constants;
 using RimWorldMCP.Harmony;
 using RimWorldMCP.Tools;
 using Verse;
@@ -78,7 +79,7 @@ namespace RimWorldMCP
             {
                 var tick = Find.TickManager?.TicksGame ?? 0;
                 var json = System.Text.Json.JsonSerializer.Serialize(new { type = "tick", tick });
-                McpServiceManager.Host?.SendEvent("game/tick", json);
+                McpServiceManager.Host?.SendEvent(McpChannels.GameTick, json);
             }
             catch (Exception ex) { McpLog.Warn($"tick 推送失败: {ex}"); }
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using RimWorldMCP.Constants;
 using Verse;
 
 namespace RimWorldMCP.Harmony
@@ -107,7 +108,7 @@ namespace RimWorldMCP.Harmony
                 var host = McpServiceManager.Host;
                 if (host != null)
                 {
-                    host.SendEvent("game/notification", sseJson);
+                    host.SendEvent(McpChannels.GameNotification, sseJson);
                     McpLog.Info($"[NotificationBus] SSE 已推送: type={n.Type} level={level}");
                 }
                 else

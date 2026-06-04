@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using RimWorldMCP.Constants;
 using Verse;
 using Verse.AI;
 using RimWorld;
@@ -260,7 +261,7 @@ namespace RimWorldMCP.Tools
                         pos_z = d.PosZ
                     })
                 });
-                McpServiceManager.Host?.SendEvent("game/trapped", payload);
+                McpServiceManager.Host?.SendEvent(McpChannels.GameTrapped, payload);
             }
             catch (Exception ex) { McpLog.Warn($"[TrappedColonistTracker] SSE 推送失败: {ex.Message}"); }
         }

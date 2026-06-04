@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using RimWorldAgent.Core.AgentRuntime;
+using RimWorldAgent.Core.Constants;
 
 namespace RimWorldAgent.Core.Mcp
 {
@@ -119,7 +120,7 @@ namespace RimWorldAgent.Core.Mcp
             {
                 switch (notif.Method)
                 {
-                    case "game/tick":
+                    case McpChannels.GameTick:
                         var tick = notif.Params?["tick"]?.GetValue<int>() ?? 0;
                         if (tick > 0) OnGameTick?.Invoke(tick);
                         break;
