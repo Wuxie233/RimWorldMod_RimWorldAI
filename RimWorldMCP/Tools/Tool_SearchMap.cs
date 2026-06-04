@@ -21,6 +21,7 @@ namespace RimWorldMCP.Tools
             {
                 keyword = new { type = "string", description = "模糊匹配关键字（匹配 Label 或 defName）" },
                 defName = new { type = "string", description = "精确 defName 过滤" },
+                thingDef = new { type = "string", description = "精确 defName 过滤（defName 的别名，兼容参数名混淆）" },
                 pos_x = new { type = "integer", description = "搜索中心 X 坐标（可选，与 pos_y 和 radius 配合）" },
                 pos_y = new { type = "integer", description = "搜索中心 Y 坐标（可选）" },
                 radius = new { type = "number", description = "搜索半径（格），不填则全图搜索" },
@@ -43,8 +44,11 @@ namespace RimWorldMCP.Tools
                 keyword = kw.GetString() ?? "";
 
             string defName = "";
+            // 兼容 thingDef 别名（AI 常混淆参数名）
             if (args != null && args.Value.TryGetProperty("defName", out var dn))
                 defName = dn.GetString() ?? "";
+            else if (args != null && args.Value.TryGetProperty("thingDef", out var td))
+                defName = td.GetString() ?? "";
 
             int cx = -1, cz = -1;
             float radius = -1f;

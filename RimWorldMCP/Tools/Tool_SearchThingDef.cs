@@ -139,6 +139,8 @@ namespace RimWorldMCP.Tools
                         if (d.IsStuff) tags.Add("材料");
                         if (d.recipeMaker != null) tags.Add("可制造");
                         if (d.researchPrerequisites?.Count > 0) tags.Add("需研究");
+                        // 矿脉提示
+                        if (d.defName.StartsWith("Mineable")) tags.Add("→ 地图挖掘可得");
 
                         string tagStr = tags.Count > 0 ? $"[{string.Join("|", tags)}] " : "";
                         string priceStr = d.BaseMarketValue > 0 ? $", ${d.BaseMarketValue:F0}" : "";
