@@ -180,6 +180,26 @@
 - **财富管控**：不囤积，多余烧掉/送掉；棉花/茶叶→贸易换武器零件
 - **心情**：保持≥50%；精致食物+娱乐+干净工装；尸体尽快清理
 
+### 矿脉挖掘
+钢铁、零件、金银等资源通过**挖掘矿脉**获取（不是捡地上的物品）。
+
+1. `find_mineable()` — 列出所有可挖掘矿脉类型和数量（汇总表）
+2. `find_mineable(defName:"MineableSteel", page:1)` — 按坐标分页查看具体位置
+3. `designate_mine(pos_x, pos_y, end_x, end_y)` — 圈定矩形范围标记开采
+
+**常用 defName**：
+| 产出物 | defName |
+|--------|---------|
+| 钢铁 | `MineableSteel` |
+| 零部件 | `MineableComponentsIndustrial` |
+| 白银 | `MineableSilver` |
+| 黄金 | `MineableGold` |
+| 玻璃钢 | `MineablePlasteel` |
+| 翡翠 | `MineableJade` |
+| 铀 | `MineableUranium` |
+
+优先采密集聚集区（`find_mineable` 汇总后选数量最多的类型 → 分页查看坐标 → 圈定开采）。
+
 ## 存储区管理
 - **物品不放存储区 = 殖民者找不到 = 任务中断**
 - 存储区操作前先调 `get_structure_layout` 了解现有布局

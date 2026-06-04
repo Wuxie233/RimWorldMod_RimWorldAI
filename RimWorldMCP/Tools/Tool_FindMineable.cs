@@ -8,21 +8,26 @@ using Verse;
 
 namespace RimWorldMCP.Tools
 {
-    /// <summary>扫描全图可挖掘矿脉（defName 以 Mineable 开头的建筑），按产出类型分组返回坐标。</summary>
+    /// <summary>
+    /// 两级交互扫描可挖掘矿脉：
+    /// 1. 不传 defName → 类型汇总表（名称 | defName | 数量）
+    /// 2. 传 defName → 该类型坐标分页
+    /// </summary>
     public class Tool_FindMineable : ITool
     {
         public string Name => "find_mineable";
-        public string Description => "扫描全图可挖掘矿脉，按产出类型分组返回坐标。用于快速定位钢铁、零部件、金银等矿脉。";
+        public string Description => "扫描全图可挖掘矿脉。默认列出所有类型汇总，传 defName 则按坐标分页查看。";
 
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
-                keyword = new { type = "string", description = "模糊匹配产出名称（可选），如 \"钢\"、\"零件\"、\"金\"。不填返回全部" },
-                min_count = new { type = "integer", description = "最少矿脉数阈值（可选），只返回数量 >= 此值的矿脉类型", @default = 1 },
-                page = new { type = "integer", description = "页码（1起始），默认1", @default = 1 },
-                page_size = new { type = "integer", description = "每页矿脉类型数，默认5，最大20", @default = 5 }
+                keyword = new { type = "string", description = "模糊匹配产出名称（可选），如 \"钢\"、\"零件\"。不填返回全部" },
+                defName = new { type = "string", description = "精确 defName（可选）。不传 = 类型汇总表；传了 = 该类型坐标分页" },
+                min_count = new { type = "integer", description = "最少矿脉数阈值（可选），汇总模式下只返回数量 >= 此值的类型", @default = 1 },
+                page = new { type = "integer", description = "页码（1起始），坐标模式下控制该类型坐标页，默认1", @default = 1 },
+                page_size = new { type = "integer", description = "每页坐标数，默认20，最大50", @default = 20 }
             }
         });
 
@@ -31,12 +36,17 @@ namespace RimWorldMCP.Tools
             string keyword = "";
             if (args?.TryGetProperty("keyword", out var jk) == true)
                 keyword = jk.GetString() ?? "";
+            string defName = "";
+            if (args?.TryGetProperty("defName", out var dn) == true)
+                defName = dn.GetString() ?? "";
+            else if (args?.TryGetProperty("thingDef", out var td) == true)
+                defName = td.GetString() ?? "";
             int minCount = 1;
             if (args?.TryGetProperty("min_count", out var jm) == true)
                 minCount = Math.Max(1, jm.GetInt32());
-            int page = 1, pageSize = 5;
+            int page = 1, pageSize = 20;
             if (args?.TryGetProperty("page", out var jp) == true) page = Math.Max(1, jp.GetInt32());
-            if (args?.TryGetProperty("page_size", out var jps) == true) pageSize = Math.Max(1, Math.Min(20, jps.GetInt32()));
+            if (args?.TryGetProperty("page_size", out var jps) == true) pageSize = Math.Max(1, Math.Min(50, jps.GetInt32()));
 
             return await McpCommandQueue.DispatchAsync(() =>
             {
@@ -53,10 +63,10 @@ namespace RimWorldMCP.Tools
                         if (t.Fogged()) continue;
                         if (!t.def.defName.StartsWith("Mineable")) continue;
 
-                        var dn = t.def.defName;
-                        if (!groups.ContainsKey(dn))
-                            groups[dn] = (t.def.label ?? dn, dn, new List<IntVec3>());
-                        groups[dn].positions.Add(t.Position);
+                        var dname = t.def.defName;
+                        if (!groups.ContainsKey(dname))
+                            groups[dname] = (t.def.label ?? dname, dname, new List<IntVec3>());
+                        groups[dname].positions.Add(t.Position);
                     }
 
                     // 关键词过滤
@@ -68,10 +78,6 @@ namespace RimWorldMCP.Tools
                             .ToDictionary(kv => kv.Key, kv => kv.Value);
                     }
 
-                    // 数量阈值
-                    groups = groups.Where(kv => kv.Value.positions.Count >= minCount)
-                                   .ToDictionary(kv => kv.Key, kv => kv.Value);
-
                     if (groups.Count == 0)
                     {
                         string hint = !string.IsNullOrEmpty(keyword)
@@ -80,48 +86,59 @@ namespace RimWorldMCP.Tools
                         return ToolResult.Success(hint);
                     }
 
-                    // 按数量降序
-                    var sorted = groups.Values.OrderByDescending(g => g.positions.Count).ToList();
-                    int totalTypes = sorted.Count;
-                    int totalBlocks = sorted.Sum(g => g.positions.Count);
-                    var paged = sorted.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-
-                    if (paged.Count == 0)
-                        return ToolResult.Success($"第 {page} 页无数据（共 {totalTypes} 种矿脉，每页 {pageSize} 种）。");
-
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"## 可挖掘矿脉 共 {totalTypes} 种，{totalBlocks} 块");
-                    sb.AppendLine();
-
-                    foreach (var g in paged)
+                    // ──── 模式 A：指定 defName → 坐标分页 ────
+                    if (!string.IsNullOrEmpty(defName))
                     {
-                        var positions = g.positions;
-                        sb.AppendLine($"### {g.label} (`{g.defName}`) — {positions.Count} 块");
+                        if (!groups.TryGetValue(defName, out var g))
+                            return ToolResult.Success($"未找到 defName=\"{defName}\" 的矿脉。可用类型: {string.Join(", ", groups.Keys)}");
 
-                        // 按 x 排序相邻坐标，每行输出 6 个坐标
-                        var sortedPos = positions.OrderBy(p => p.x).ThenBy(p => p.z).ToList();
-                        var coords = new List<string>();
-                        foreach (var p in sortedPos)
-                            coords.Add($"[{p.x},{p.z}]");
+                        var positions = g.positions.OrderBy(p => p.x).ThenBy(p => p.z).ToList();
+                        int totalCoords = positions.Count;
+                        int totalPages = (int)Math.Ceiling((double)totalCoords / pageSize);
+                        if (page > totalPages) page = totalPages;
+                        var paged = positions.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"## {g.label} (`{defName}`) — {totalCoords} 块");
+                        sb.AppendLine();
+
+                        var coords = paged.Select(p => $"[{p.x},{p.z}]").ToList();
                         for (int i = 0; i < coords.Count; i += 6)
                         {
                             var chunk = coords.Skip(i).Take(6);
                             sb.AppendLine("  " + string.Join("  ", chunk));
                         }
-                        sb.AppendLine();
-                    }
 
-                    int totalPages = (int)Math.Ceiling((double)totalTypes / pageSize);
-                    if (totalPages > 1)
-                    {
+                        sb.AppendLine();
                         sb.AppendLine("---");
-                        sb.Append($"第 {page}/{totalPages} 页（矿脉类型）");
+                        sb.Append($"第 {page}/{totalPages} 页");
                         if (page < totalPages) sb.Append($" | page={page + 1} 下一页");
                         if (page > 1) sb.Append($" | page={page - 1} 上一页");
-                        sb.AppendLine();
+                        return ToolResult.Success(sb.ToString());
                     }
 
-                    return ToolResult.Success(sb.ToString().TrimEnd());
+                    // ──── 模式 B：汇总表 ────
+                    var filtered = groups.Values
+                        .Where(g => g.positions.Count >= minCount)
+                        .OrderByDescending(g => g.positions.Count)
+                        .ToList();
+
+                    if (filtered.Count == 0)
+                        return ToolResult.Success($"没有数量 >= {minCount} 的矿脉类型。");
+
+                    int totalBlocks = filtered.Sum(g => g.positions.Count);
+
+                    var summary = new StringBuilder();
+                    summary.AppendLine($"## 可挖掘矿脉 共 {filtered.Count} 种，{totalBlocks} 块");
+                    summary.AppendLine();
+                    summary.AppendLine($"| 名称 | defName | 数量 |");
+                    summary.AppendLine($"|------|---------|------|");
+                    foreach (var g in filtered)
+                        summary.AppendLine($"| {g.label} | `{g.defName}` | {g.positions.Count} 块 |");
+                    summary.AppendLine();
+                    summary.AppendLine("传 `defName` 查看具体坐标分页，如 `find_mineable(defName:\"MineableSteel\", page:1)`");
+
+                    return ToolResult.Success(summary.ToString());
                 }
                 catch (Exception ex) { return ToolResult.Error($"扫描矿脉失败: {ex.Message}"); }
             });
@@ -129,7 +146,6 @@ namespace RimWorldMCP.Tools
 
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args)
         {
-            // 全图扫描，不需要移动视角
             return null;
         }
     }
