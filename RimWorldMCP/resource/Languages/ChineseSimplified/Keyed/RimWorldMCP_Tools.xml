@@ -108,8 +108,6 @@
   <!-- Skill -->
   <RimWorldMCP_Tool_get_skills>领域技能</RimWorldMCP_Tool_get_skills>
   <RimWorldMCP_Tool_active_skill>加载知识库</RimWorldMCP_Tool_active_skill>
-  <RimWorldMCP_Tool_get_symbol_dictionary>符号字典</RimWorldMCP_Tool_get_symbol_dictionary>
-
   <!-- 研究 -->
   <RimWorldMCP_Tool_stop_research>停止研究</RimWorldMCP_Tool_stop_research>
   <RimWorldMCP_Tool_get_research_speed>研究速度详情</RimWorldMCP_Tool_get_research_speed>
