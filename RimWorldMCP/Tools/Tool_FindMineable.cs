@@ -20,7 +20,9 @@ namespace RimWorldMCP.Tools
             properties = new
             {
                 keyword = new { type = "string", description = "模糊匹配产出名称（可选），如 \"钢\"、\"零件\"、\"金\"。不填返回全部" },
-                min_count = new { type = "integer", description = "最少矿脉数阈值（可选），只返回数量 >= 此值的矿脉类型", @default = 1 }
+                min_count = new { type = "integer", description = "最少矿脉数阈值（可选），只返回数量 >= 此值的矿脉类型", @default = 1 },
+                page = new { type = "integer", description = "页码（1起始），默认1", @default = 1 },
+                page_size = new { type = "integer", description = "每页矿脉类型数，默认5，最大20", @default = 5 }
             }
         });
 
@@ -32,6 +34,9 @@ namespace RimWorldMCP.Tools
             int minCount = 1;
             if (args?.TryGetProperty("min_count", out var jm) == true)
                 minCount = Math.Max(1, jm.GetInt32());
+            int page = 1, pageSize = 5;
+            if (args?.TryGetProperty("page", out var jp) == true) page = Math.Max(1, jp.GetInt32());
+            if (args?.TryGetProperty("page_size", out var jps) == true) pageSize = Math.Max(1, Math.Min(20, jps.GetInt32()));
 
             return await McpCommandQueue.DispatchAsync(() =>
             {
@@ -77,12 +82,18 @@ namespace RimWorldMCP.Tools
 
                     // 按数量降序
                     var sorted = groups.Values.OrderByDescending(g => g.positions.Count).ToList();
+                    int totalTypes = sorted.Count;
+                    int totalBlocks = sorted.Sum(g => g.positions.Count);
+                    var paged = sorted.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                    if (paged.Count == 0)
+                        return ToolResult.Success($"第 {page} 页无数据（共 {totalTypes} 种矿脉，每页 {pageSize} 种）。");
 
                     var sb = new StringBuilder();
-                    sb.AppendLine($"## 可挖掘矿脉 共 {sorted.Count} 种，{sorted.Sum(g => g.positions.Count)} 块");
+                    sb.AppendLine($"## 可挖掘矿脉 共 {totalTypes} 种，{totalBlocks} 块");
                     sb.AppendLine();
 
-                    foreach (var g in sorted)
+                    foreach (var g in paged)
                     {
                         var positions = g.positions;
                         sb.AppendLine($"### {g.label} (`{g.defName}`) — {positions.Count} 块");
@@ -97,6 +108,16 @@ namespace RimWorldMCP.Tools
                             var chunk = coords.Skip(i).Take(6);
                             sb.AppendLine("  " + string.Join("  ", chunk));
                         }
+                        sb.AppendLine();
+                    }
+
+                    int totalPages = (int)Math.Ceiling((double)totalTypes / pageSize);
+                    if (totalPages > 1)
+                    {
+                        sb.AppendLine("---");
+                        sb.Append($"第 {page}/{totalPages} 页（矿脉类型）");
+                        if (page < totalPages) sb.Append($" | page={page + 1} 下一页");
+                        if (page > 1) sb.Append($" | page={page - 1} 上一页");
                         sb.AppendLine();
                     }
 
