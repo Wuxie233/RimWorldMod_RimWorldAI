@@ -1,40 +1,24 @@
 """
 generate_symbols.py
 
-从 RimWorld 游戏 XML Def 中提取所有 ThingDef/TerrainDef，为每个 def 分配独立 Unicode 字符，
+从 RimWorld 游戏 XML Def 中提取所有 ThingDef/TerrainDef，为每个 def 分配独立字符，
 生成 Symbols.json 词表文件。
 
 用法:
   python3 generate_symbols.py \
     --rimworld-dir F:/SteamLibrary/steamapps/common/RimWorld \
     --output RimWorldMCP/resource/Symbols.json \
-    --dlcs Core Ideology Royalty Biotech Anomaly
+    --pool-size 4000
 
 工作流程:
   1. 扫描所有 DLC 的 Defs/ 目录，收集 <ThingDef> 和 <TerrainDef>
   2. 跳过抽象定义（isAbstract=true）
-  3. 按 defName 字母序从 Unicode 符号池分配独立字符
-  4. 维护一对一映射：一个字符 = 一个 def
-  5. 每个条目包含 char（映射字符）和 group（分类标签）
+  3. PRESET_MAP 中的 def 使用手工指定语义字符（自检无冲突）
+  4. 其余 def 按字母序从 Unicode 池分配
+  5. 剩余字符 → fallback_pool
+  6. 所有字符排除私有区(U+E000-U+F8FF)、控制字符、代理区
 
-生成后由 AI 润色:
-  脚本分配的字符是纯机械的 — 按字母序依次从池中取，没有语义关联。
-  生成后应由 AI 对重要 def 的字符进行语义优化，例如:
-
-    "Wall":      { "char": "㆛" }  → "char": "#"    墙的语义
-    "Door":      { "char": "㆝" }  → "char": "D"    门的语义
-    "WaterDeep": { "char": "㇇" } → "char": "〰"   深水的语义
-    "Soil":      { "char": "㇍" }  → "char": "."    土地的语义
-
-  原则:
-    - 保持一对一（改之前先确认目标字符未被占用）
-    - 优先用 ASCII 和常见符号
-    - 字符与 def 语义尽量匹配
-    - 固定网格占用的字符不要用: ▓ ▒ ░ · ○ ◎ ● █ P .
-
-生效:
-  SymbolDictionary 每次启动直接读取 Symbols.json 并重建映射，无缓存。
-  修改后重启 RimWorld 即生效。
+字符映射: 编辑 PRESET_MAP 字典修改语义字符，添加/删除条目。
 """
 
 import argparse
@@ -44,317 +28,409 @@ import re
 import sys
 import unicodedata
 
+# 固定网格独占字符 — 不能分配给词表
+RESERVED = set("▓▒░·○◎●█P.?")
+
+# 不可渲染的 Unicode 区块 (私有区/代理/特殊)
+BAD_RANGES = [
+    (0xE000, 0xF8FF),   # 私有区 — 大多字体无字形
+    (0xF0000, 0x10FFFF),# 补充私有区
+    (0xD800, 0xDFFF),   # 代理区
+    (0xFFF0, 0xFFFF),   # 特殊
+]
+
+def is_bad_char(c: str) -> bool:
+    """检查字符是否不可渲染"""
+    cp = ord(c)
+    for lo, hi in BAD_RANGES:
+        if lo <= cp <= hi:
+            return True
+    cat = unicodedata.category(c)
+    if cat.startswith("C") and cat != "Co":
+        return True
+    return False
+
 # ============================================================
-# 全局常量
+# PRESET_MAP — 手工语义字符映射 (defName → char)
+# 生成时自检: 无_RESERVED、内部无重复。
+# 要修改直接编辑此字典、加大维护即可。不要改后面的自动分配逻辑。
 # ============================================================
 
-# 固定网格（fertility / temperature / pollution）独占的字符，
-# 词表不能分配这些字符，否则图例会混乱。
-RESERVED_CHARS = set("▓▒░·○◎●█P.?")
+PRESET_MAP = {
+    # ---- 地形 Terrain ----
+    "Soil":             ",",
+    "SoilRich":         ":",
+    "Gravel":           "`",
+    "Sand":             ";",
+    "SoftSand":         "\"",
+    "PackedDirt":       "'",
+    "Mud":              "%",
+    "Marsh":            "≈",
+    "Ice":              "=",
+    "WaterShallow":     "~",
+    "WaterDeep":        "≋",
+    "Concrete":         "&",
+    "BrokenAsphalt":    "0",
+    "Underwall":        "1",
+    "AncientTile":      "2",
 
+    # ---- 建筑：墙门 ----
+    "Wall":             "▉",
+    "Door":             "▣",
+    "Column":           "◈",
+    "Fence":            "║",
+    "FenceGate":        "╬",
+
+    # ---- 建筑：防御 ----
+    "Sandbags":         "▦",
+    "Barricade":        "▤",
+    "TrapSpike":        "▲",
+    "Turret_MiniTurret":"⊗",
+
+    # ---- 建筑：电力 ----
+    "PowerConduit":     "─",
+    "Battery":          "⚡",
+    "SolarGenerator":   "☀",
+    "WindTurbine":      "☴",
+    "WoodFiredGenerator":"♮",
+    "GeothermalGenerator":"♁",
+    "PowerSwitch":      "⏻",
+
+    # ---- 建筑：温控 ----
+    "Heater":           "♨",
+    "Cooler":           "❄",
+    "Campfire":         "♩",
+    "Vent":             "↔",
+    "StandingLamp":     "☉",
+    "SunLamp":          "☼",
+    "WallLamp":         "◐",
+
+    # ---- 建筑：家具 ----
+    "Bed":              "□",
+    "DoubleBed":        "▥",
+    "RoyalBed":         "♛",
+    "HospitalBed":      "⚕",
+    "Bedroll":          "▭",
+    "Crib":             "⌂",
+    "DiningChair":      "⌐",
+    "Armchair":         "⌒",
+    "Stool":            "∙",
+    "Table2x2c":        "⊞",
+    "Table1x2c":        "⊟",
+    "TableButcher":     "⚒",
+    "Shelf":            "▨",
+    "Dresser":          "▩",
+
+    # ---- 建筑：生产 ----
+    "SimpleResearchBench":"⌘",
+    "HiTechResearchBench":"⌬",
+    "ElectricStove":    "♫",
+    "FueledStove":      "♺",
+    "NutrientPasteDispenser":"◫",
+    "ElectricSmithy":   "⚙",
+    "FabricationBench": "⚗",
+    "TableStonecutter": "⬢",
+    "HydroponicsBasin": "▰",
+    "Hopper":           "⌵",
+
+    # ---- 建筑：医疗/杂项 ----
+    "VitalsMonitor":    "✚",
+    "CommsConsole":     "@",
+    "Grave":            "†",
+    "CryptosleepCasket":"✖",
+
+    # ---- 建筑：娱乐/艺术 ----
+    "HorseshoesPin":    "⊂",
+    "ChessTable":       "♜",
+    "BilliardsTable":   "◗",
+    "PokerTable":       "♠",
+    "TubeTelevision":   "◑",
+    "SculptureSmall":   "△",
+    "SculptureGrand":   "◇",
+
+    # ---- 物品 Item ----
+    "Steel":            "■",
+    "Plasteel":         "▢",
+    "Silver":           "$",
+    "Gold":             "◆",
+    "Uranium":          "☢",
+    "WoodLog":          "♣",
+    "ComponentIndustrial":"◍",
+    "ComponentSpacer":  "◉",
+    "Chemfuel":         "⛽",
+    "Neutroamine":      "⚘",
+    "MedicineHerbal":   "☘",
+    "MedicineIndustrial":"✤",
+    "Kibble":           "◌",
+    "MealSimple":       "◒",
+    "RawRice":          "◓",
+    "RawPotatoes":      "◔",
+    "RawCorn":          "◕",
+    "RawBerries":       "◖",
+    "Hay":              "≀",
+    "ChunkSlagSteel":   "8",
+    "ChunkSandstone":   "9",
+    "Synthread":        "⌇",
+    "Cloth":            "✕",
+
+    # ---- 植物 Plant ----
+    "Plant_Rice":       "ρ",
+    "Plant_Potato":     "π",
+    "Plant_Corn":       "ς",
+    "Plant_Cotton":     "τ",
+    "Plant_Healroot":   "✿",
+    "Plant_Hops":       "♧",
+    "Plant_Smokeleaf":  "☁",
+    "Plant_Psychoid":   "Ψ",
+    "Plant_Devilstrand":"δ",
+
+    "Plant_TreeOak":    "♢",
+    "Plant_TreePine":   "♤",
+    "Plant_TreePoplar": "┄",
+    "Plant_TreeBirch":  "♡",
+    "Plant_TreePalm":   "♥",
+    "Plant_TreeCocoa":  "☕",
+    "Plant_TreeTeak":   "♭",
+    "Plant_TreeWillow": "℧",
+    "Plant_TreeCypress":"¥",
+    "Plant_TreeMaple":  "♬",
+    "Plant_TreeCecropia":"✳",
+    "Plant_TreeDrago":  "◊",
+    "Plant_TreeAnima":  "☯",
+    "Plant_TreeGauranlen":"✧",
+    "Plant_TreeBamboo": "┃",
+
+    "Plant_Grass":      "˙",
+    "Plant_Bush":       "⌈",
+    "Plant_Berry":      "β",
+    "Plant_Moss":       "≡",
+    "Plant_Rose":       "❀",
+    "Plant_Daylily":    "❁",
+
+    # ---- Pawn ----
+    "Human":            "☺",
+    "Muffalo":          "♞",
+    "Boomalope":        "♘",
+    "Thrumbo":          "♔",
+    "Megasloth":        "☻",
+
+    "Mech_CentipedeBlaster":"☣",
+    "Mech_Scyther":     "✂",
+    "Mech_Lancer":      "⚐",
+    "Mech_Pikeman":     "⚑",
+}
 
 # ============================================================
-# Def 分类 — 根据 XML 标签和所在目录名推断语义分组
+# 自检：脚本启动时验证 PRESET_MAP 无冲突
 # ============================================================
+def check_preset():
+    seen = {}
+    for name, ch in PRESET_MAP.items():
+        if ch in RESERVED:
+            raise SystemExit(f"PRESET_MAP 错误: {name}={ch!r} 与固定网格冲突")
+        if ch in seen:
+            raise SystemExit(f"PRESET_MAP 重复: {name}={ch!r} vs {seen[ch]}={ch!r}")
+        if is_bad_char(ch):
+            raise SystemExit(f"PRESET_MAP 错误: {name}={ch!r} 是不可渲染字符")
+        seen[ch] = name
 
+# ============================================================
+# Def 分类
+# ============================================================
 def classify(def_name: str, tag: str, parent_dir: str) -> str:
-    """
-    返回 def 的分类标签，用于 Symbols.json 的 group 字段。
-
-    参数:
-      def_name: Def 的 defName（如 "Wall"、"Sand"）
-      tag: XML 标签名 — "ThingDef" 或 "TerrainDef"
-      parent_dir: 该 XML 文件所在子目录名（如 "Buildings_Structure"）
-
-    分类规则:
-      - TerrainDef        → "Terrain"
-      - 目录含建筑关键词   → "Building"
-      - 目录含"plant"     → "Plant"
-      - 目录含生物关键词   → "Pawn"
-      - 其余 ThingDef     → "Item"
-    """
-    # 地形直判
     if tag == "TerrainDef":
         return "Terrain"
-
     p = parent_dir.lower()
-
-    # 建筑: 目录名含以下任一关键词
     if any(kw in p for kw in [
-        "building", "furniture", "production", "power", "security",
-        "structure", "temperature", "art", "joy", "mech", "exotic",
-        "special", "musical", "natural", "ideo", "ritual", "deathrest",
-        "recharger", "fleshmass", "obelisk", "psychic", "void", "ship",
-        "cult", "condition", "ancient",
+        "building","furniture","production","power","security",
+        "structure","temperature","art","joy","mech","exotic",
+        "special","musical","natural","ideo","ritual","deathrest",
+        "recharger","fleshmass","obelisk","psychic","void","ship",
+        "cult","condition","ancient",
     ]):
         return "Building"
-
-    # 植物
     if "plant" in p:
         return "Plant"
-
-    # 生物
-    if any(kw in p for kw in [
-        "race", "animal", "human", "insect", "mechanoid", "entity", "fleshbeast",
-    ]):
+    if any(kw in p for kw in ["race","animal","human","insect","mechanoid","entity","fleshbeast"]):
         return "Pawn"
-
-    # 其余全部归为物品
     return "Item"
 
-
 # ============================================================
-# Unicode 符号池 — 收集等宽渲染友好的可打印字符
+# Unicode 符号池 — 排除不可渲染字符
 # ============================================================
-
 def build_pool() -> list[str]:
-    """
-    从 20 个 Unicode 区块收集单字符用作 def 映射。
-
-    选择原则:
-      - 避开控制字符、空白、代理区、私有区
-      - 避开 RESERVED_CHARS（已被 fertility/temperature/pollution 网格占用）
-      - 优先选择等宽渲染友好的区块: CJK 兼容方块、几何图形、技术符号等
-      - 按 Unicode 码点升序收集，再按区块优先级重新排列
-
-    返回去重保序的字符列表，长度 ≈3700，远大于 Def 总数（~1560），
-    保证每个 def 都能分到独立字符。
-    """
-    # Unicode 区块列表 — 元组 (起始码点, 结束码点)
-    ranges = [
-        (0x3190, 0x319F),   # 汉文训读标记（小号方框内字符）
-        (0x31C0, 0x31EF),   # CJK 笔画
-        (0x3200, 0x32FF),   # 带圈/括号 CJK（256 个等宽字符）
-        (0x3300, 0x33FF),   # CJK 兼容方块
-        (0x2300, 0x23FF),   # 杂项技术符号
-        (0x25A0, 0x25FF),   # 几何图形（方块/三角/圆形）
-        (0x2600, 0x26FF),   # 杂项符号（星形/天气/棋子）
-        (0x2700, 0x27BF),   # 装饰符号（剪刀/星标）
-        (0x27C0, 0x27EF),   # 数学符号 A
-        (0x2980, 0x29FF),   # 数学符号 B
-        (0x2B00, 0x2BFF),   # 补充箭头/图形
-        (0x00C0, 0x024F),   # 拉丁扩展（带变音符字母）
-        (0x0370, 0x03FF),   # 希腊/科普特字母
-        (0x0400, 0x04FF),   # 西里尔字母
-        (0x0530, 0x06FF),   # 亚美尼亚/希伯来/阿拉伯字母
-        (0x0E00, 0x0E7F),   # 泰文
-        (0x2500, 0x257F),   # 制表符（线条/边框）
-        (0x2580, 0x259F),   # 方块元素
-        (0x2800, 0x28FF),   # 盲文（256 个均匀点阵图案）
-        (0xFF00, 0xFFEF),   # 半角/全角形式
+    """按语义分类的 Unicode 区块，各分类独立收集后按优先级合并"""
+    groups = [
+        # (分类标签, 区块列表)
+        ("结构",  [(0x2500,0x257F)]),                    # 建筑结构
+        ("防御",  [(0x2580,0x259F)]),                    # 防御与大型建筑
+        ("家具",  [(0x25A0,0x25FF)]),                    # 家具与资源
+        ("科技",  [(0x2200,0x22FF)]),                    # 科技与机械
+        ("电力",  [(0x2600,0x26FF)]),                    # 电力与特殊设施
+        ("艺术",  [(0x2700,0x27BF)]),                    # 艺术与医疗
+        ("作物",  [(0x03B1,0x03C9)]),                    # 作物植物(希腊字母)
+        ("流向",  [(0x2190,0x21FF)]),                    # 流向类设施
+        # 补充区块
+        ("补充1", [(0x2300,0x23FF),(0x2B00,0x2BFF)]),   # 杂项技术+箭头
+        ("补充2", [(0x00C0,0x024F),(0x0370,0x03FF)]),   # 拉丁扩展+希腊
+        ("补充3", [(0x0400,0x04FF),(0x0530,0x06FF)]),   # 西里尔+其他字母
+        ("补充4", [(0x3190,0x33FF)]),                    # CJK兼容
+        ("补充5", [(0x2800,0x28FF),(0xFF00,0xFFEF)]),   # 盲文+半角
     ]
-
     pool = []
-    for lo, hi in ranges:
-        for cp in range(lo, hi + 1):
-            c = chr(cp)
-            cat = unicodedata.category(c)
-
-            # 跳过不可见字符
-            # C*: 控制字符 (Cc/Cf/Cs/Co/Cn)
-            # Zs: 空格分隔符, Zl: 行分隔符, Zp: 段分隔符
-            if cat.startswith("C") or cat in ("Zs", "Zl", "Zp"):
-                continue
-
-            # 跳过固定网格占用的字符
-            if c in RESERVED_CHARS:
-                continue
-
-            pool.append(c)
-
-    # 去重保序: 不同 Unicode 区块可能有重叠码点
+    for _label, ranges in groups:
+        for lo, hi in ranges:
+            for cp in range(lo, hi+1):
+                c = chr(cp)
+                if is_bad_char(c) or c in RESERVED:
+                    continue
+                pool.append(c)
     seen = set()
-    unique = []
-    for c in pool:
-        if c not in seen:
-            seen.add(c)
-            unique.append(c)
-
-    return unique
-
+    return [c for c in pool if not (c in seen or seen.add(c))]
 
 # ============================================================
-# XML 解析 — 从游戏 Def 文件中抽取 ThingDef 和 TerrainDef
+# XML 解析
 # ============================================================
-
 def extract_defs(rimworld_dir: str, dlcs: list[str]) -> dict[str, dict]:
-    """
-    遍历每个 DLC 的 Defs/ 目录下所有 XML 文件，提取 <ThingDef> 和 <TerrainDef>。
-
-    处理逻辑:
-      - 只匹配成对的 <ThingDef>...</ThingDef> / <TerrainDef>...</TerrainDef>
-      - 跳过 isAbstract=true 的模板定义（不会在游戏中实际生成）
-      - 提取 defName（必须）和分类
-      - 根据父目录名调用 classify() 推断分组
-
-    参数:
-      rimworld_dir: RimWorld 安装根目录
-      dlcs: DLC 目录名列表
-
-    返回:
-      {defName: {"group": str}, ...}
-    """
     defs = {}
-
     for dlc in dlcs:
         defs_dir = os.path.join(rimworld_dir, "Data", dlc, "Defs")
         if not os.path.isdir(defs_dir):
             print(f"  [跳过] 目录不存在: {defs_dir}")
             continue
-
-        # os.walk 递归遍历子目录
         for root, _, files in os.walk(defs_dir):
             for fname in files:
                 if not fname.endswith(".xml"):
                     continue
-
                 path = os.path.join(root, fname)
                 try:
                     content = open(path, encoding="utf-8").read()
                 except Exception:
-                    continue  # 文件读取失败则跳过
-
-                # 非贪婪匹配: 提取每对 ThingDef/TerrainDef 之间的内容
-                # re.DOTALL: . 匹配换行符
+                    continue
                 blocks = re.findall(
                     r"<(ThingDef|TerrainDef)[^>]*>(.*?)</(ThingDef|TerrainDef)>",
-                    content, re.DOTALL,
-                )
-
+                    content, re.DOTALL)
                 for tag_open, block, tag_close in blocks:
-                    # 防御: 确保开闭标签一致（嵌套 Def 时可能不匹配）
                     if tag_open != tag_close:
                         continue
-
-                    # 抽象模板不生成实例，跳过
-                    if re.search(
-                        r"<isAbstract>\s*true\s*</isAbstract>",
-                        block, re.IGNORECASE,
-                    ):
+                    if re.search(r"<isAbstract>\s*true\s*</isAbstract>", block, re.IGNORECASE):
                         continue
-
-                    # defName 是必须字段
                     m_name = re.search(r"<defName>(.*?)</defName>", block)
                     if not m_name:
                         continue
                     name = m_name.group(1)
-
-                    # 根据父目录推断分类
                     parent_dir = os.path.basename(os.path.dirname(path))
                     cat = classify(name, tag_open, parent_dir)
-
-                    # 第一次遇到的 defName 为准（后续同名 def 忽略）
                     if name not in defs:
                         defs[name] = {"group": cat}
-
     return defs
-
 
 # ============================================================
 # 主流程
 # ============================================================
-
 def main():
-    # ----- 参数解析 -----
-    parser = argparse.ArgumentParser(
-        description="从 RimWorld XML 生成 Symbols.json 词表"
-    )
-    parser.add_argument(
-        "--rimworld-dir", required=True,
-        help="RimWorld 安装根目录（如 F:/SteamLibrary/steamapps/common/RimWorld）",
-    )
-    parser.add_argument(
-        "--output", required=True,
-        help="输出 JSON 文件路径",
-    )
-    parser.add_argument(
-        "--dlcs", nargs="+",
-        default=["Core", "Ideology", "Royalty", "Biotech", "Anomaly"],
-        help="要扫描的 DLC 目录名列表，默认: Core Ideology Royalty Biotech Anomaly",
-    )
-    parser.add_argument(
-        "--pool-size", type=int, default=4000,
-        help="兜底池大小，默认 4000",
-    )
+    check_preset()
+
+    parser = argparse.ArgumentParser(description="从 RimWorld XML 生成 Symbols.json 词表")
+    parser.add_argument("--rimworld-dir", required=True,
+                        help="RimWorld 安装根目录")
+    parser.add_argument("--output", required=True,
+                        help="输出 JSON 文件路径")
+    parser.add_argument("--dlcs", nargs="+",
+                        default=["Core","Ideology","Royalty","Biotech","Anomaly"],
+                        help="要扫描的 DLC 列表")
+    parser.add_argument("--pool-size", type=int, default=4000,
+                        help="兜底池大小")
     args = parser.parse_args()
 
-    rimworld_dir = args.rimworld_dir
-    output_path = args.output
-    dlcs = args.dlcs
+    print(f"RimWorld: {args.rimworld_dir}")
+    print(f"DLCs: {args.dlcs}")
 
-    print(f"RimWorld: {rimworld_dir}")
-    print(f"DLCs: {dlcs}")
-
-    # ----- 1. 抽取所有 Def -----
-    defs = extract_defs(rimworld_dir, dlcs)
+    # 1. 抽取
+    defs = extract_defs(args.rimworld_dir, args.dlcs)
     print(f"Def 总数: {len(defs)}")
 
-    # ----- 2. 构建符号池 -----
+    # 2. 池
     pool = build_pool()
     print(f"符号池: {len(pool)}")
 
-    # ----- 3. 按 defName 字母序分配字符 -----
-    # 字母序保证每次运行分配结果完全一致（只要 def 列表不变）
-    overflow = 0          # 溢出计数（理论上不会发生，池 > Def 数）
+    # 3. 分配
     symbols = {}
+    used = set()   # 已用字符
 
-    for i, name in enumerate(sorted(defs.keys())):
-        info = defs[name]
+    # 3a. PRESET_MAP (手工指定)
+    from_preset = 0
+    for name, ch in PRESET_MAP.items():
+        if name not in defs:
+            continue
+        symbols[name] = {"char": ch, "group": defs[name]["group"]}
+        used.add(ch)
+        from_preset += 1
 
-        # 从池中取第 i 个字符，池不足时回退到私有区 U+E000+
-        if i < len(pool):
-            ch = pool[i]
+    # 3b. ASCII 池剩余 (33-126)
+    ascii_count = 0
+    for cp in range(33, 127):
+        ch = chr(cp)
+        if ch in RESERVED or ch in used or is_bad_char(ch):
+            continue
+        # 找第一个未分配的非preset def
+        for name in sorted(defs):
+            if name not in symbols:
+                symbols[name] = {"char": ch, "group": defs[name]["group"]}
+                used.add(ch)
+                ascii_count += 1
+                break
+
+    # 3c. Unicode 池剩余
+    unicode_count = 0
+    pi = 0
+    remaining = sorted(n for n in defs if n not in symbols)
+    for name in remaining:
+        while pi < len(pool) and pool[pi] in used:
+            pi += 1
+        if pi < len(pool):
+            ch = pool[pi]; pi += 1
         else:
-            ch = chr(0xE000 + (i - len(pool)))
-            overflow += 1
+            break  # 池耗尽（理论上不会）
+        symbols[name] = {"char": ch, "group": defs[name]["group"]}
+        used.add(ch)
+        unicode_count += 1
 
-        # 组装条目
-        symbols[name] = {"char": ch, "group": info["group"]}
-
-    # ----- 4. 构建兜底池 -----
-    # 从符号池中 symbols 用完后剩余的部分 + 溢出部分取 pool_size 个字符
-    used_chars = set(v["char"] for v in symbols.values())
+    # 4. fallback_pool (从未使用字符取)
     fallback_pool = []
-    for c in pool:
-        if c not in used_chars and c not in RESERVED_CHARS:
+    for c in pool[pi:]:
+        if c not in used and not is_bad_char(c):
             fallback_pool.append(c)
             if len(fallback_pool) >= args.pool_size:
                 break
-
-    # 池不够，从私有区补充
-    fallback_overflow = 0
+    # 不足时从周围可见Unicode补充
+    extra_cp = 0x2000
     while len(fallback_pool) < args.pool_size:
-        c = chr(0xE000 + fallback_overflow)
-        if c not in used_chars and c not in RESERVED_CHARS:
+        c = chr(extra_cp); extra_cp += 1
+        if c not in used and not is_bad_char(c) and c not in RESERVED:
             fallback_pool.append(c)
-        fallback_overflow += 1
 
-    # ----- 5. 序列化写入 -----
-    output = {
-        "version": 1,
-        "symbols": symbols,
-        "fallback_pool": fallback_pool,
-    }
-
-    out_dir = os.path.dirname(output_path) or "."
+    # 5. 写入
+    output = {"version": 1, "symbols": symbols, "fallback_pool": fallback_pool}
+    out_dir = os.path.dirname(args.output) or "."
     os.makedirs(out_dir, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(args.output, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    # ----- 6. 统计输出 -----
+    # 6. 统计
     groups = {}
     for v in symbols.values():
-        g = v["group"]
-        groups[g] = groups.get(g, 0) + 1
-
-    print(f"输出: {output_path}")
-    print(f"条目: {len(symbols)}（溢出: {overflow}）")
-    print(f"分类: {dict(groups)}")
-    print(f"兜底池: {len(fallback_pool)} 个字符")
-    print()
-    print("下一步: 由 AI 对重要 def 手工润色字符映射，使语义匹配。")
-    print("  修改后重启 RimWorld 即生效。")
-
+        g = v["group"]; groups[g] = groups.get(g, 0) + 1
+    chars = [v["char"] for v in symbols.values()]
+    ascii_total = sum(1 for c in chars if ord(c) < 128)
+    from collections import Counter
+    dupes = [c for c,n in Counter(chars).items() if n>1]
+    print(f"输出: {args.output}")
+    print(f"条目: {len(symbols)} (预设:{from_preset} ASCII剩余:{ascii_count} Unicode:{unicode_count})")
+    print(f"ASCII字符: {ascii_total}  分类: {dict(groups)}")
+    print(f"兜底池: {len(fallback_pool)} 一对一: {'OK' if not dupes else 'FAIL:'+str(dupes)}")
+    if dupes:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
