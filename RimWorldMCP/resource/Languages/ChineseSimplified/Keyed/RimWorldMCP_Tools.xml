@@ -98,6 +98,10 @@
   <RimWorldMCP_Tool_get_structure_layout>建筑布局</RimWorldMCP_Tool_get_structure_layout>
   <RimWorldMCP_Tool_get_construction_status>建造进度</RimWorldMCP_Tool_get_construction_status>
 
+  <!-- 战斗 -->
+  <RimWorldMCP_Tool_shooting_position_grid>射击位评分</RimWorldMCP_Tool_shooting_position_grid>
+  <RimWorldMCP_Tool_defend_position>防御位置</RimWorldMCP_Tool_defend_position>
+
   <!-- 移动 -->
   <RimWorldMCP_Tool_move_pawn>移动角色</RimWorldMCP_Tool_move_pawn>
   <RimWorldMCP_Tool_move_camera>移动视角</RimWorldMCP_Tool_move_camera>

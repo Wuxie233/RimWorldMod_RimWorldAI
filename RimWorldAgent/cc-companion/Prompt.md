@@ -80,7 +80,7 @@
 - 地图边缘硬阻塞：房间接触地图边缘时就无法设为囚室
 
 ### 战斗速查
-收到袭击 → 暂停 → 全员征召 → 检查武器护甲 → 近战@高护甲上前缠斗 → 远程@掩体后输出 → 设为 1 倍速 → 集火 → 救治。详细流程用 `active_skill combat-preparation`。
+收到袭击 → 暂停 → `find_enemies(show_movement=true)` 看敌情 → `draft_pawn(colonist_ids=[...])` 精确征召 → `equip_pawn`/`force_dress` 批量装备 → `defend_position(action="list")` 检查防御位 → 近战堵门(`mode:melee`) + 远程 `shooting_position_grid` 选位 → `move_pawn(moves=[...])` 批量走位 → `force_attack(attacks=[...])` 批量开火。详细流程用 `active_skill combat-preparation`。
 
 ### 治疗注意事项
 - **患者必须静止不动才能被治疗**：被治疗的目标不能移动（战斗中奔跑的殖民者无法被治疗）
@@ -246,6 +246,8 @@
 | get_recommended_apparel | 按评分排名推荐衣物 |
 | get_recommended_weapon | 按科技等级排名推荐武器（远程/近战） |
 | schedule_operation | 安排手术 |
+| shooting_position_grid | 射击位评分排名（Top N，含掩体信息） |
+| defend_position | 防御位 set/list/remove/clear |
 | force_bed_rest | 强制殖民者卧床休养（一次性，痊愈自动起身） |
 | plan_add / plan_list / plan_remove | 规划画板：画草图→查看→确认布局→真正建造 |
 | get_tile_grid | 文本网格地图 |

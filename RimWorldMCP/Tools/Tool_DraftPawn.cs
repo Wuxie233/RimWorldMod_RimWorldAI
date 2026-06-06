@@ -20,6 +20,12 @@ namespace RimWorldMCP.Tools
             properties = new
             {
                 thing_id = new { type = "integer", description = "殖民者 ID（来自 get_colonists，留空则操作全部）" },
+                colonist_ids = new
+                {
+                    type = "array",
+                    description = "指定殖民者 ID 列表（精确子集，优先级高于 thing_id）",
+                    items = new { type = "integer" }
+                },
                 drafted = new { type = "boolean", description = "true=征召, false=解除征召" }
             },
             required = new[] { "drafted" }
@@ -35,7 +41,13 @@ namespace RimWorldMCP.Tools
 
             var drafted = d.GetBoolean();
             int thingId = -1;
-            if (args.Value.TryGetProperty("thing_id", out var jId) && jId.TryGetInt32(out var tid))
+            var colonistIds = new List<int>();
+            if (args.Value.TryGetProperty("colonist_ids", out var jIds) && jIds.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var ji in jIds.EnumerateArray())
+                    if (ji.TryGetInt32(out var cid)) colonistIds.Add(cid);
+            }
+            if (colonistIds.Count == 0 && args.Value.TryGetProperty("thing_id", out var jId) && jId.TryGetInt32(out var tid))
                 thingId = tid;
 
             // 所有游戏 API 访问通过 DispatchAsync 调度到主线程
@@ -53,7 +65,13 @@ namespace RimWorldMCP.Tools
 
                     // 查找目标殖民者
                     List<Pawn> targets;
-                    if (thingId < 0)
+                    if (colonistIds.Count > 0)
+                    {
+                        targets = colonists.Where(c => colonistIds.Contains(c.thingIDNumber)).ToList();
+                        if (targets.Count == 0)
+                            return ToolResult.Error($"找不到指定 ID 的殖民者: [{string.Join(",", colonistIds)}]");
+                    }
+                    else if (thingId < 0)
                     {
                         targets = colonists.ToList();
                     }

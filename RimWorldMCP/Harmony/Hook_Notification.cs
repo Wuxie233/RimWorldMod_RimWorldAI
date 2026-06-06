@@ -4,6 +4,7 @@ using System.Linq;
 using HarmonyLib;
 using RimWorld;
 using RimWorldMCP;
+using RimWorldMCP.Tools;
 using Verse;
 
 namespace RimWorldMCP.Harmony
@@ -153,6 +154,8 @@ namespace RimWorldMCP.Harmony
             static void Postfix()
             {
                 NotificationBus.NotifySpeedSlowdown("游戏速度强制降至1x (800 ticks)");
+                Tool_GetGameSpeed.LastSlowdownReason = "突发威胁";
+                Tool_GetGameSpeed.LastSlowdownTicksUntil = Find.TickManager.TicksGame + 800;
             }
         }
 
@@ -162,6 +165,8 @@ namespace RimWorldMCP.Harmony
             static void Postfix()
             {
                 NotificationBus.NotifySpeedSlowdown("游戏速度强制降至1x (240 ticks)");
+                Tool_GetGameSpeed.LastSlowdownReason = "战斗/火灾/越狱";
+                Tool_GetGameSpeed.LastSlowdownTicksUntil = Find.TickManager.TicksGame + 240;
             }
         }
 

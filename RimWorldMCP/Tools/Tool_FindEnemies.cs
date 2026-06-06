@@ -19,11 +19,18 @@ namespace RimWorldMCP.Tools
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
-            properties = new { }
+            properties = new
+            {
+                show_movement = new { type = "boolean", description = "是否显示敌人移动预测（攻击目标、ETA、路径）（默认 false）", @default = false }
+            }
         });
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
+            bool showMovement = false;
+            if (args?.TryGetProperty("show_movement", out var jSm) == true && jSm.ValueKind == JsonValueKind.True)
+                showMovement = true;
+
             return await McpCommandQueue.DispatchAsync(() =>
             {
                 try
@@ -44,6 +51,9 @@ namespace RimWorldMCP.Tools
                     if (enemies.Count == 0)
                         return ToolResult.Success("地图上没有发现敌对目标。");
 
+                    var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+                    var colonistLookup = colonists?.ToDictionary(c => c.thingIDNumber, c => c) ?? new Dictionary<int, Pawn>();
+
                     var sb = new StringBuilder();
                     sb.AppendLine($"## 战场态势");
 
@@ -57,6 +67,35 @@ namespace RimWorldMCP.Tools
                             : e.Drafted ? "征召"
                             : "活跃";
                         sb.AppendLine($"[{i + 1}] {e.LabelShort} | {e.KindLabel} | ({e.Position.x},{e.Position.z}) | {status} | ID:{e.thingIDNumber}");
+
+                        // 移动预测
+                        if (showMovement && !e.Downed)
+                        {
+                            var enemyTarget = e.mindState?.enemyTarget as Pawn;
+                            if (enemyTarget != null && colonistLookup.TryGetValue(enemyTarget.thingIDNumber, out var tPawn))
+                            {
+                                sb.Append($"    ▸ 目标: {tPawn.LabelShort}(ID:{tPawn.thingIDNumber})");
+                            }
+                            if (e.pather?.MovingNow == true)
+                            {
+                                if (e.pather.Destination.IsValid)
+                                    sb.Append($" | 前往: ({e.pather.Destination.Cell.x},{e.pather.Destination.Cell.z})");
+                                var path = e.pather.curPath;
+                                if (path != null && path.NodesReversed != null && path.NodesReversed.Count > 1)
+                                {
+                                    var nodes = path.NodesReversed;
+                                    int remaining = nodes.Count - 1;
+                                    float eta = remaining * e.TicksPerMoveCardinal / 60f;
+                                    sb.Append($" | ETA: {eta:F1}s");
+                                    // 前5个路径节点
+                                    int showNodes = Math.Min(5, nodes.Count);
+                                    sb.Append(" | 路径: ");
+                                    for (int j = nodes.Count - 1; j >= Math.Max(0, nodes.Count - showNodes); j--)
+                                        sb.Append(j < nodes.Count - 1 ? "→" : "").Append($"({nodes[j].x},{nodes[j].z})");
+                                }
+                            }
+                            sb.AppendLine();
+                        }
                     }
 
                     // 已征召殖民者的攻击范围覆盖

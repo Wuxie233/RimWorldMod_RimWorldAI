@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -12,119 +13,131 @@ namespace RimWorldMCP.Tools
     public class Tool_EquipPawn : ITool
     {
         public string Name => "equip_pawn";
-        public string Description => "强制殖民者去拾取并装备武器或衣物（走过去自然拾取）。通过 thing_id 定位物品，由唯一 ID 精确定位。";
+        public string Description => "批量强制殖民者去拾取并装备武器或衣物。";
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new
             {
-                colonist_id = new { type = "integer", description = "殖民者 ID（来自 get_colonists）" },
-                thing_id = new { type = "integer", description = "装备物品 ID（来自 get_tile_detail）" },
-                queue = new { type = "boolean", description = "加入任务队列末尾而非立即执行（默认 true）", @default = true }
-            },
-            required = new[] { "colonist_id", "thing_id" }
+                equipments = new
+                {
+                    type = "array",
+                    description = "装备指令列表（批量模式，优先）",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            colonist_id = new { type = "integer", description = "殖民者 ID" },
+                            thing_id = new { type = "integer", description = "装备物品 ID" }
+                        },
+                        required = new[] { "colonist_id", "thing_id" }
+                    }
+                },
+                colonist_id = new { type = "integer", description = "殖民者 ID（单个模式，来自 get_colonists）" },
+                thing_id = new { type = "integer", description = "装备物品 ID（单个模式，来自 get_tile_detail）" }
+            }
         });
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
         {
             if (args == null) return ToolResult.Error("缺少参数");
+
+            // 批量模式
+            if (args.Value.TryGetProperty("equipments", out var jEqs) && jEqs.ValueKind == JsonValueKind.Array)
+                return await McpCommandQueue.DispatchAsync(() => ExecuteBatch(jEqs));
+
+            // 单个模式（兼容旧调用）
             if (!args.Value.TryGetProperty("colonist_id", out var jCid) || !jCid.TryGetInt32(out var colonistId))
-                return ToolResult.Error("缺少必填参数: colonist_id");
+                return ToolResult.Error("缺少必填参数: colonist_id 或 equipments");
             if (!args.Value.TryGetProperty("thing_id", out var jTid) || !jTid.TryGetInt32(out var thingId))
-                return ToolResult.Error("缺少必填参数: thing_id");
-            bool queue = true;
-            if (args.Value.TryGetProperty("queue", out var jQueue) && jQueue.ValueKind == JsonValueKind.False)
-                queue = false;
-            var capQueue = queue;
+                return ToolResult.Error("缺少必填参数: thing_id 或 equipments");
 
             return await McpCommandQueue.DispatchAsync(() =>
             {
-                try
-                {
-                    var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
-                    if (colonists == null || colonists.Count == 0)
-                        return ToolResult.Error("当前没有自由殖民者。");
-
-                    Pawn pawn = colonists.FirstOrDefault(c => c.thingIDNumber == colonistId);
-                    if (pawn == null)
-                        return ToolResult.Error($"找不到 ID={colonistId} 的殖民者。");
-
-                    Map map = Find.CurrentMap;
-                    if (map == null) return ToolResult.Error("没有当前地图。");
-
-                    Thing? thing = map.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == thingId);
-                    if (thing == null)
-                        return ToolResult.Error($"找不到 ID={thingId} 的物品。");
-
-                    string qualityStr = "";
-                    try
-                    {
-                        var compQuality = thing.TryGetComp<CompQuality>();
-                        if (compQuality != null) qualityStr = $"（品质: {compQuality.Quality.GetLabel()}）";
-                        }
-                        catch (Exception ex) { McpLog.Warn($"[EquipPawn] 读取物品品质失败: {ex.Message}"); }
-
-                    bool isWeapon = thing.def.IsWeapon || thing.HasComp<CompEquippable>();
-                    if (isWeapon)
-                    {
-                        if (pawn.equipment == null)
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 没有装备管理器。");
-                        ThingWithComps? equipmentThing = thing as ThingWithComps;
-                        if (equipmentThing == null)
-                            return ToolResult.Error($"{thing.Label} 不是可装备物品。");
-
-                        if (pawn.WorkTagIsDisabled(WorkTags.Violent))
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 被禁止暴力，无法装备武器。");
-
-                        if (thing.def.IsRangedWeapon && pawn.WorkTagIsDisabled(WorkTags.Shooting))
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 被禁止射击，无法装备远程武器。");
-
-                        if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 没有操作能力，无法装备。");
-
-                        if (!EquipmentUtility.CanEquip(equipmentThing, pawn, out string r, false))
-                            return ToolResult.Error($"无法装备: {r}");
-
-                        if (EquipmentUtility.AlreadyBondedToWeapon(thing, pawn))
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 已与另一把灵能武器绑定。");
-                    }
-                    else
-                    {
-                        Apparel? apparel = thing as Apparel;
-                        if (apparel == null) return ToolResult.Error($"{thing.Label} 不是衣物。");
-                        if (pawn.apparel == null) return ToolResult.Error($"{pawn.Name.ToStringShort} 没有衣物管理器。");
-
-                        if (!ApparelUtility.HasPartsToWear(pawn, apparel.def))
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 没有适合穿戴 {apparel.Label} 的身体部位。");
-
-                        if (pawn.IsMutant && pawn.mutant.Def.disableApparel)
-                            return ToolResult.Error($"{pawn.Name.ToStringShort} 是变异体，无法穿戴衣物。");
-
-                        if (pawn.apparel.WouldReplaceLockedApparel(apparel))
-                            return ToolResult.Error($"穿戴 {apparel.Label} 会替换已锁定的衣物。");
-
-                        if (!EquipmentUtility.CanEquip(apparel, pawn, out string r, true))
-                            return ToolResult.Error($"无法穿戴: {r}");
-                    }
-
-                    if (!pawn.CanReach(thing, PathEndMode.ClosestTouch, Danger.Deadly))
-                        return ToolResult.Error($"{pawn.Name.ToStringShort} 无法到达 {thing.Label}。");
-
-                    if (thing.IsBurning())
-                        return ToolResult.Error($"{thing.Label} 正在燃烧，无法装备。");
-
-                    thing.SetForbidden(false, true);
-                    Job job = JobMaker.MakeJob(isWeapon ? JobDefOf.Equip : JobDefOf.Wear, thing);
-                    if (!pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc, capQueue))
-                        return ToolResult.Error($"{pawn.Name.ToStringShort} 无法执行操作（物品可能已被占用或当前任务无法中断）。");
-
-                    string typeLabel = isWeapon ? "武器" : "衣物";
-                    string queueLabel = capQueue ? "（已加入队列）" : "";
-                    return ToolResult.Success($"{pawn.Name.ToStringShort} 已前往拾取并装备{typeLabel}: {thing.Label}{qualityStr}。{queueLabel}");
-                }
-                catch (Exception ex) { return ToolResult.Error($"装备操作失败: {ex.Message}"); }
+                var (ok, msg) = ExecuteOne(colonistId, thingId, null);
+                return ok ? ToolResult.Success(msg) : ToolResult.Error(msg);
             });
         }
+
+        private ToolResult ExecuteBatch(JsonElement jEqs)
+        {
+            var successList = new List<string>();
+            var failList = new List<string>();
+            var pawnCache = new Dictionary<int, Pawn>();
+
+            var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+            if (colonists == null || colonists.Count == 0) return ToolResult.Error("当前没有自由殖民者。");
+
+            foreach (var je in jEqs.EnumerateArray())
+            {
+                try
+                {
+                    if (!je.TryGetProperty("colonist_id", out var jC) || !jC.TryGetInt32(out var cid))
+                    { failList.Add("缺少 colonist_id"); continue; }
+                    if (!je.TryGetProperty("thing_id", out var jT) || !jT.TryGetInt32(out var tid))
+                    { failList.Add($"col={cid}: 缺少 thing_id"); continue; }
+
+                    if (!pawnCache.TryGetValue(cid, out var pawn))
+                    {
+                        pawn = colonists.FirstOrDefault(c => c.thingIDNumber == cid);
+                        if (pawn != null) pawnCache[cid] = pawn;
+                    }
+
+                    var (ok, msg) = ExecuteOne(cid, tid, pawn);
+                    if (ok) successList.Add(msg);
+                    else failList.Add(msg);
+                }
+                catch (Exception ex) { failList.Add($"异常: {ex.Message}"); }
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"已发送 {successList.Count}/{successList.Count + failList.Count} 个装备指令: {string.Join(", ", successList)}");
+            if (failList.Count > 0) sb.Append($"。失败: {string.Join("; ", failList)}");
+            return ToolResult.Success(sb.ToString());
+        }
+
+        private static (bool ok, string msg) ExecuteOne(int colonistId, int thingId, Pawn? cachedPawn)
+        {
+            var colonists = PawnsFinder.AllMaps_FreeColonistsSpawned;
+            Pawn pawn = cachedPawn ?? colonists.FirstOrDefault(c => c.thingIDNumber == colonistId);
+            if (pawn == null) return (false, $"col={colonistId}: 找不到");
+
+            Map map = Find.CurrentMap;
+            if (map == null) return (false, $"col={colonistId}: 无地图");
+
+            Thing? thing = map.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == thingId);
+            if (thing == null) return (false, $"{pawn.LabelShort}: 找不到物品ID={thingId}");
+
+            string qualityStr = "";
+            try { var cq = thing.TryGetComp<CompQuality>(); if (cq != null) qualityStr = $"({cq.Quality.GetLabel()})"; }
+            catch { }
+
+            bool isWeapon = thing.def.IsWeapon || thing.HasComp<CompEquippable>();
+            string err;
+            if (isWeapon)
+            {
+                if (pawn.equipment == null) return (false, $"{pawn.LabelShort}: 无装备管理器");
+                if (pawn.WorkTagIsDisabled(WorkTags.Violent)) return (false, $"{pawn.LabelShort}: 禁止暴力");
+                if (!EquipmentUtility.CanEquip(thing as ThingWithComps, pawn, out err, false)) return (false, $"{pawn.LabelShort}: {err}");
+            }
+            else
+            {
+                if (pawn.apparel == null) return (false, $"{pawn.LabelShort}: 无衣物管理器");
+                if (!EquipmentUtility.CanEquip(thing as Apparel, pawn, out err, true)) return (false, $"{pawn.LabelShort}: {err}");
+            }
+
+            if (!pawn.CanReach(thing, PathEndMode.ClosestTouch, Danger.Deadly))
+                return (false, $"{pawn.LabelShort}: 无法到达{thing.Label}");
+
+            thing.SetForbidden(false, true);
+            Job job = JobMaker.MakeJob(isWeapon ? JobDefOf.Equip : JobDefOf.Wear, thing);
+            if (!pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc))
+                return (false, $"{pawn.LabelShort}: 无法执行");
+
+            return (true, $"{pawn.LabelShort}→{thing.Label}{qualityStr}");
+        }
+
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args)
         {
             if (args == null) return null;

@@ -202,6 +202,11 @@ namespace RimWorldMCP.Tools
                 if (weapon != null)
                 {
                     string weaponLabel = weapon.Label;
+                    if (weapon.def.IsRangedWeapon && weapon.def.Verbs.Count > 0)
+                    {
+                        float range = weapon.def.Verbs[0].range;
+                        weaponLabel += $" (射程{range:F0})";
+                    }
                     parts.Add(weaponLabel);
                 }
 

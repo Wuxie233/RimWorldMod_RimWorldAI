@@ -260,6 +260,7 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 | `advance_tick` | 让游戏运行指定 tick 数后暂停返回状态，用于观察结果避免过度思考 | `Find.TickManager` (入队) |
 | `get_mcp_latency` | 探查 Agent 与游戏之间的 MCP 延迟 | `McpCommandQueue.DispatchAsync` 排队计时 |
 | `check_map_loaded` | 检查游戏和地图加载状态 | `Current.Game`, `Find.CurrentMap` |
+| `get_game_speed` | 当前游戏速度（含强制减速剩余时间） | `Find.TickManager`, `TimeSlower` |
 
 ### 网格查询 (6)
 | Tool | 说明 | 参数 |
@@ -330,7 +331,7 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 ### 殖民者需求 (4)
 | Tool | 说明 | 数据源/操作 |
 |------|------|------------|
-| `get_colonists` | 殖民者信息 | `PawnsFinder.AllMaps_FreeColonistsSpawned` |
+| `get_colonists` | 殖民者信息（武器名含射程） | `PawnsFinder.AllMaps_FreeColonistsSpawned` |
 | `get_colonist_needs` | 详细需求状态 | `pawn.needs.AllNeeds` |
 | `get_work_priorities` | 所有殖民者完整工作优先级表 | `pawn.workSettings.GetPriority()` |
 | `set_work_priority` | 设置工作优先级 | `pawn.workSettings.SetPriority()` (入队) |
@@ -345,15 +346,17 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 | `force_surgery` | 强制执行指定手术 | `Bill_Medical` (入队) |
 | `get_available_surgeries` | 列出可用手术（分页） | `RecipeDefOf` |
 
-### 战斗 (6)
+### 战斗 (7)
 | Tool | 说明 | 数据源/操作 |
 |------|------|------------|
-| `equip_pawn` | 强制殖民者拾取并装备（Job 系统，自然走过去） | `JobDefOf.Equip` / `JobDefOf.Wear` (入队) |
-| `draft_pawn` | 征召/解除征召 | `pawn.drafter.Drafted` (入队) |
+| `equip_pawn` | 批量强制殖民者拾取并装备（`equipments[]` 数组） | `JobDefOf.Equip` / `JobDefOf.Wear` (入队) |
+| `draft_pawn` | 征召/解除征召（`colonist_ids[]` 精确子集） | `pawn.drafter.Drafted` (入队) |
 | `get_defense_status` | 防御状态报告 | `pawn.equipment.Primary`, `map.listerBuildings` |
 | `attack_pawn` | 攻击指定目标 | `JobDefOf.AttackMelee` / `JobDefOf.AttackStatic` (入队) |
-| `force_attack` | 强制攻击（无视掩体/过墙） | `JobDefOf.AttackStatic` (入队) |
-| `find_enemies` | 搜索地图上的敌人 | `map.mapPawns.AllPawnsSpawned` |
+| `force_attack` | 批量攻击（melee/hold_position/auto，支持 `attacks[]` 数组） | `JobDefOf.AttackStatic`/`AttackMelee` (入队) |
+| `find_enemies` | 搜索地图上的敌人（`show_movement` 含移动预测） | `map.mapPawns.AllPawnsSpawned` |
+| `shooting_position_grid` | 射击位评分排名（Top N，复刻游戏原版 CastPositionPreference 公式） | `CoverUtility`, `CanHitTargetFrom` |
+| `defend_position` | 防御位置 set/list/remove/clear（内存存储） | 内存 `List<DefendPoint>` |
 
 ### 右键菜单操作 (10)
 | Tool | 说明 | 操作 |
@@ -365,7 +368,7 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 | `rescue_pawn` | 救援倒地友方 | `JobDefOf.Rescue` (入队) |
 | `capture_pawn` | 俘虏倒地敌人 | `JobDefOf.Capture` (入队) |
 | `ingest_item` | 服食物品 | `JobDefOf.Ingest` (入队) |
-| `force_dress` | 强制穿戴衣物 | `JobDefOf.Wear` (入队) |
+| `force_dress` | 批量强制穿戴衣物（`equipments[]` 数组） | `JobDefOf.Wear` (入队) |
 | `haul_item` | 搬运物品到目标位置 | `JobDefOf.HaulToCell` (入队) |
 | `drop_carried` | 放下手中物品 | `JobDefOf.DropEquipment` (入队) |
 
@@ -397,7 +400,7 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 ### 移动 (2)
 | Tool | 说明 | 数据源/操作 |
 |------|------|------------|
-| `move_pawn` | 移动角色到指定坐标 | `JobDefOf.Goto` (入队) |
+| `move_pawn` | 批量移动角色（`moves[]` 数组） | `JobDefOf.Goto` (入队) |
 | `move_camera` | 移动视角（本身不返回 GetTargetPos） | `Find.CameraDriver` |
 
 ### 弹框 (2)

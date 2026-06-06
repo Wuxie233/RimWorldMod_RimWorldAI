@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Verse;
@@ -7,13 +8,17 @@ namespace RimWorldMCP.Tools
     public class Tool_GetGameSpeed : ITool, INoMapRequired
     {
         public string Name => "get_game_speed";
-        public string Description => "获取当前游戏速度状态（已暂停/1 倍速/2 倍速/3 倍速/最快）。";
+        public string Description => "获取当前游戏速度状态，包含强制减速的剩余时间。";
 
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
             properties = new { }
         });
+
+        /// <summary>最近减速原因（由 Harmony Hook_Notification 写入）</summary>
+        public static string LastSlowdownReason = "";
+        public static int LastSlowdownTicksUntil = 0;
 
         /// <summary>查询真实暂停状态（供 Agent 侧同步 PaceController 用）</summary>
         public static bool IsPaused()
@@ -27,9 +32,15 @@ namespace RimWorldMCP.Tools
         {
             var tm = Find.TickManager;
             if (tm == null) return "未知";
-
             if (tm.Paused) return "已暂停";
-
+            if (tm.slower.ForcedNormalSpeed)
+            {
+                int remaining = LastSlowdownTicksUntil - Find.TickManager.TicksGame;
+                if (remaining < 0) remaining = 0;
+                float seconds = remaining / 60f;
+                string reason = string.IsNullOrEmpty(LastSlowdownReason) ? "" : $"（{LastSlowdownReason}）";
+                return $"1 倍速（强制减速中，剩余 ~{remaining}ticks / {seconds:F0}秒）{reason}";
+            }
             return tm.CurTimeSpeed switch
             {
                 TimeSpeed.Normal => "1 倍速",
