@@ -13,18 +13,24 @@ namespace RimWorldAgent.Core.Data
     public sealed class SqliteConversationStore : IConversationStore, IDisposable
     {
         private readonly string _connectionString;
+        private readonly string _saveId;
         private readonly object _writeLock = new();
         private bool _disposed;
 
         /// <param name="filePath">SQLite 文件路径，如 .../conversation.db</param>
-        public SqliteConversationStore(string filePath)
+        /// <param name="saveId">存档标识 — 所有查询/写入均按此 ID 隔离</param>
+        public SqliteConversationStore(string filePath, string saveId)
         {
+            if (string.IsNullOrEmpty(saveId))
+                throw new ArgumentNullException(nameof(saveId));
+
             var dir = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
+            _saveId = saveId;
             _connectionString = $"Data Source={filePath};Version=3;Journal Mode=WAL;";
-            CoreLog.Info($"[SqliteConvStore] DB: {filePath}");
+            CoreLog.Info($"[SqliteConvStore] DB: {filePath}  save_id={_saveId}");
             InitTable();
         }
 
@@ -36,7 +42,8 @@ namespace RimWorldAgent.Core.Data
                 try
                 {
                     using var conn = OpenConnection();
-                    using var cmd = new SQLiteCommand("SELECT COUNT(*) FROM conversation", conn);
+                    using var cmd = new SQLiteCommand("SELECT COUNT(*) FROM conversation WHERE save_id = @saveId", conn);
+                    cmd.Parameters.AddWithValue("@saveId", _saveId);
                     return Convert.ToInt32(cmd.ExecuteScalar());
                 }
                 catch (Exception ex)
@@ -84,8 +91,8 @@ namespace RimWorldAgent.Core.Data
                 {
                     using var conn = OpenConnection();
                     using var cmd = new SQLiteCommand(
-                        @"INSERT INTO conversation (role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day)
-                          VALUES (@role, @text, @thinking, @runId, @agentType, @toolName, @toolInput, @isToolError, @toolDurationMs, @ts, @gameDay)", conn);
+                        @"INSERT INTO conversation (role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day, save_id)
+                          VALUES (@role, @text, @thinking, @runId, @agentType, @toolName, @toolInput, @isToolError, @toolDurationMs, @ts, @gameDay, @saveId)", conn);
                     cmd.Parameters.AddWithValue("@role", RoleToString(role));
                     cmd.Parameters.AddWithValue("@text", text ?? "");
                     cmd.Parameters.AddWithValue("@thinking", thinking ?? "");
@@ -97,6 +104,7 @@ namespace RimWorldAgent.Core.Data
                     cmd.Parameters.AddWithValue("@toolDurationMs", toolDurationMs);
                     cmd.Parameters.AddWithValue("@ts", DateTime.UtcNow.ToString("o"));
                     cmd.Parameters.AddWithValue("@gameDay", AgentOrchestrator.GameDay);
+                    cmd.Parameters.AddWithValue("@saveId", _saveId);
                     cmd.ExecuteNonQuery();
                 }
                 catch (Exception ex)
@@ -113,7 +121,8 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation WHERE id = @id", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation WHERE save_id = @saveId AND id = @id", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 cmd.Parameters.AddWithValue("@id", id);
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
@@ -134,7 +143,8 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation ORDER BY id DESC LIMIT @n", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation WHERE save_id = @saveId ORDER BY id DESC LIMIT @n", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 cmd.Parameters.AddWithValue("@n", Math.Max(1, n));
                 var list = new List<ConversationEntry>();
                 using var reader = cmd.ExecuteReader();
@@ -158,7 +168,8 @@ namespace RimWorldAgent.Core.Data
             {
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
-                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation WHERE id < @beforeId ORDER BY id DESC LIMIT @n", conn);
+                    "SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day FROM conversation WHERE save_id = @saveId AND id < @beforeId ORDER BY id DESC LIMIT @n", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 cmd.Parameters.AddWithValue("@beforeId", beforeId);
                 cmd.Parameters.AddWithValue("@n", Math.Max(1, n));
                 var list = new List<ConversationEntry>();
@@ -212,10 +223,12 @@ namespace RimWorldAgent.Core.Data
                         is_tool_error INTEGER NOT NULL DEFAULT 0,
                         tool_duration_ms REAL NOT NULL DEFAULT 0,
                         timestamp   TEXT    NOT NULL,
-                        game_day    INTEGER NOT NULL DEFAULT 0
+                        game_day    INTEGER NOT NULL DEFAULT 0,
+                        save_id     TEXT    NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_timestamp ON conversation(timestamp);
-                    CREATE INDEX IF NOT EXISTS idx_game_day ON conversation(game_day);", conn);
+                    CREATE INDEX IF NOT EXISTS idx_game_day ON conversation(game_day);
+                    CREATE INDEX IF NOT EXISTS idx_save_id ON conversation(save_id);", conn);
                 cmd.ExecuteNonQuery();
             }
             catch (Exception ex)
@@ -263,13 +276,15 @@ namespace RimWorldAgent.Core.Data
                 using var cmd = new SQLiteCommand(
                     @"SELECT id, role, text, thinking, run_id, agent_type, tool_name, tool_input, is_tool_error, tool_duration_ms, timestamp, game_day
                       FROM conversation
-                      WHERE role = 'tool_call'
+                      WHERE save_id = @saveId
+                        AND role = 'tool_call'
                         AND (@tool IS NULL OR tool_name = @tool)
                         AND (@fromDay = 0 OR game_day >= @fromDay)
                         AND (@toDay = 2147483647 OR game_day <= @toDay)
                         AND id < @beforeId
                       ORDER BY id DESC
                       LIMIT @limit", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 cmd.Parameters.AddWithValue("@tool", (object?)toolName ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@fromDay", fromDay);
                 cmd.Parameters.AddWithValue("@toDay", toDay);
@@ -299,11 +314,13 @@ namespace RimWorldAgent.Core.Data
                 using var cmd = new SQLiteCommand(
                     @"SELECT game_day, tool_name, COUNT(*) AS call_count
                       FROM conversation
-                      WHERE role = 'tool_call'
+                      WHERE save_id = @saveId
+                        AND role = 'tool_call'
                         AND (@fromDay = 0 OR game_day >= @fromDay)
                         AND (@toDay = 2147483647 OR game_day <= @toDay)
                       GROUP BY game_day, tool_name
                       ORDER BY game_day DESC, call_count DESC", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 cmd.Parameters.AddWithValue("@fromDay", fromDay);
                 cmd.Parameters.AddWithValue("@toDay", toDay);
                 var list = new List<ToolCallDailyStat>();
@@ -334,8 +351,9 @@ namespace RimWorldAgent.Core.Data
                 using var conn = OpenConnection();
                 using var cmd = new SQLiteCommand(
                     @"SELECT DISTINCT tool_name FROM conversation
-                      WHERE role = 'tool_call' AND tool_name != ''
+                      WHERE save_id = @saveId AND role = 'tool_call' AND tool_name != ''
                       ORDER BY tool_name", conn);
+                cmd.Parameters.AddWithValue("@saveId", _saveId);
                 var list = new List<string>();
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())

@@ -81,6 +81,9 @@ namespace RimWorldAgent.Core.AgentRuntime
         public static IReadOnlyList<Reminder> Reminders => _reminders.AsReadOnly();
 
         private static bool _lastIsPaused;
+        private static int _lastWindowsOpen;
+        private static string? _lastWindowsNames;
+        private static string? _lastSpeedLabel;
         private static Reminder? _actPauseRemind;
         private static Reminder? _actTurnRemind;
         private static Reminder? _planStayRemind;
@@ -89,6 +92,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         private static Reminder? _toolOutputRemind;
         private static Reminder? _worldSummaryRemind;
         private static Reminder? _notifRemind;
+        private static Reminder? _windowOpenRemind;
 
         static ToolDispatcher()
         {
@@ -107,6 +111,10 @@ namespace RimWorldAgent.Core.AgentRuntime
             _notifRemind = new Reminder("通知堆积", NotifThreshold,
                 () => "\n\n<system-reminder>\n⚠️ 你有未处理的通知堆积。请立即用 get_notifications 查看，用 dismiss_notification 关闭不需要的通知。\n</system-reminder>",
                 () => _notifReceivedCount > NotifThreshold);
+
+            _windowOpenRemind = new Reminder("窗口打开", 0,
+                () => $"\n\n<system-reminder>\n⚠️ 当前有 {_lastWindowsOpen} 个打开的对话框（{_lastWindowsNames}）。请先使用 get_open_dialogs 查看，再用 select_dialog_option 处理关闭。\n</system-reminder>",
+                () => _lastWindowsOpen > 0);
 
             _taskRemind = new Reminder("任务未完成", TaskCheckInterval,
                 () =>
@@ -136,7 +144,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 () => true);
 
             _reminders.AddRange(new[] { _actPauseRemind, _actTurnRemind, _planStayRemind,
-                _notifRemind, _taskRemind, _taskToolRemind, _toolOutputRemind, _worldSummaryRemind });
+                _notifRemind, _taskRemind, _taskToolRemind, _toolOutputRemind, _worldSummaryRemind, _windowOpenRemind });
         }
 
         public static void TrackToolUse(string toolName, string inputJson)
@@ -205,11 +213,16 @@ namespace RimWorldAgent.Core.AgentRuntime
                             using var doc = JsonDocument.Parse(json);
                             var root = doc.RootElement;
                             _lastIsPaused = root.TryGetProperty("paused", out var p) && p.GetBoolean();
+                            _lastWindowsOpen = root.TryGetProperty("windows_open", out var wo) ? wo.GetInt32() : 0;
+                            _lastWindowsNames = root.TryGetProperty("windows_names", out var wn) ? wn.GetString() : null;
+                            _lastSpeedLabel = root.TryGetProperty("speed", out var sp) ? sp.GetString() : null;
                         }
                         catch (JsonException)
                         {
                             // 兼容旧版文本格式
                             _lastIsPaused = json.IndexOf("已暂停", StringComparison.Ordinal) >= 0;
+                            _lastWindowsOpen = 0;
+                            _lastWindowsNames = null;
                         }
                     }
                 }
@@ -226,6 +239,8 @@ namespace RimWorldAgent.Core.AgentRuntime
             if (notifSuffix.Length > 0)
                 suffix.Append(notifSuffix);
             suffix.Append($"\n\n---\n当前模式: {phase}");
+            if (!string.IsNullOrEmpty(_lastSpeedLabel))
+                suffix.Append($" | {_lastSpeedLabel}");
             foreach (var r in _reminders)
             {
                 var text = r.GetSuffix();

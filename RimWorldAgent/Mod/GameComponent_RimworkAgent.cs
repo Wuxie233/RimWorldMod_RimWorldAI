@@ -87,7 +87,7 @@ namespace RimWorldAgent
                     logDebug: msg => SafeLog.Info($"[agent-core] {msg}"),
                     logWarn: msg => SafeLog.Warning($"[agent-core] {msg}"));
 
-                // 先启动 UIMessageBus + ConversationStore，确保 InitAsync 触发 Token 推送时 WS 已就绪
+                // 先启动 UIMessageBus，确保 InitAsync 触发 Token 推送时 WS 已就绪
                 if (settings?.BridgeHost != "disabled")
                 {
                     var bridgeHost = settings?.BridgeHost ?? "0.0.0.0";
@@ -95,11 +95,23 @@ namespace RimWorldAgent
                     UIMessageBus.Start(bridgeHost, bridgePort);
                 }
 
-                _convStore = new MemoryConversationStore();
-                AgentLoop.ConversationStore = _convStore;
-
                 await _engine.InitAsync();
                 CoreLog.Info($"[agent-mod] 内部工具已注册 ({InternalToolRegistry.Instance.All.Count}): {string.Join(", ", InternalToolRegistry.Instance.All.Select(t => t.Name))}");
+
+                // 通过 MCP 获取存档 sessionId，创建 SQLite 持久化存储
+                var mcp = _engine.McpClient;
+                if (mcp == null)
+                    throw new InvalidOperationException("McpClient 不可用，无法获取会话 ID");
+
+                var rawId = await mcp.CallTool("get_session_id");
+                var sessionId = rawId?.Trim();
+                if (string.IsNullOrEmpty(sessionId))
+                    throw new InvalidOperationException("get_session_id 返回空，当前可能未加载存档");
+
+                var dbPath = Path.Combine(projectPath, "conversation.db");
+                _convStore = new SqliteConversationStore(dbPath, sessionId!);
+                AgentLoop.ConversationStore = _convStore;
+                CoreLog.Info($"[agent-mod] SqliteConversationStore 已就绪 (save_id={sessionId})");
 
                 _dbStore = dbStore;
 
@@ -164,6 +176,7 @@ namespace RimWorldAgent
                 CoreLog.Info("[agent-mod] 返回主菜单，开始关闭 Agent 和 CCB...");
                 try { UIMessageBus.Stop(); }
                 catch (Exception ex) { SafeLog.Warning($"[agent-mod] UIMessageBus.Stop 异常 (可忽略): {ex.GetType().Name}: {ex.Message}"); }
+                (_convStore as IDisposable)?.Dispose();
                 _convStore = null;
                 AgentLoop.ConversationStore = null;
                 try

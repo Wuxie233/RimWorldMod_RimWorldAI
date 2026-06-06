@@ -103,7 +103,8 @@ namespace RimWorldMCP.Harmony
                     evt.Severity,
                     evt.Summary,
                     evt.Tick,
-                    level = (int)level
+                    level = (int)level,
+                    letterId = n.Id > 0 ? n.Id : (int?)null
                 });
                 var host = McpServiceManager.Host;
                 if (host != null)

@@ -242,7 +242,9 @@ namespace RimWorldAgent.Core.AgentRuntime
             {
                 CoreLog.Info($"[event] {evt.Method}: {evt.Category}/{evt.Severity}(L{(int)evt.Level}): {evt.Summary}");
                 var cleanSummary = StripRichTags(evt.Summary);
-                var summary = $"[{evt.Severity}/{evt.Category}] {cleanSummary}";
+                var summary = evt.LetterId.HasValue
+                    ? $"[{evt.Severity}/{evt.Category}] {cleanSummary} (ID:{evt.LetterId.Value}) — 可用 dismiss_notification(letter_id={evt.LetterId.Value}) 关闭"
+                    : $"[{evt.Severity}/{evt.Category}] {cleanSummary}";
 
                 // 所有级别都注入 suffix（AI 下次工具调用可见）
                 AgentOrchestrator.NotisAgent(summary);

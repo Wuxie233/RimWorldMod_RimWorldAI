@@ -66,7 +66,7 @@ RimWorldAgent (EXE/MOD)             RimWorldMCP (Mod DLL)
 | 模式 | 进程 | IDbStore | IConversationStore | IGameStateProvider |
 |------|------|----------|-------------------|-------------------|
 | **EXE** | `RimWorldAgent.exe` | `JsonDbStore`（JSON 文件） | `SqliteConversationStore`（SQLite WAL） | `RemoteGameStateProvider`（MCP 推送 + 查询） |
-| **MOD** | RimWorld 加载 DLL | `ScribeDbStore`（Scribe_Values） | `MemoryConversationStore`（List+lock） | `DirectGameStateProvider`（TickManager 直读） |
+| **MOD** | RimWorld 加载 DLL | `ScribeDbStore`（Scribe_Values） | `SqliteConversationStore`（SQLite WAL，save_id=MCP sessionId） | `DirectGameStateProvider`（TickManager 直读） |
 
 ### DB 存储抽象 — IDbStore
 

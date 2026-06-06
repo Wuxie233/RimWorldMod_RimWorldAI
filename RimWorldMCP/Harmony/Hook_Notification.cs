@@ -45,7 +45,8 @@ namespace RimWorldMCP.Harmony
                     Label = label,
                     Text = text,
                     DangerLabel = ClassifyLetter(let.def),
-                    Tick = Find.TickManager?.TicksGame ?? 0
+                    Tick = Find.TickManager?.TicksGame ?? 0,
+                    Id = let.ID
                 });
             }
         }

@@ -87,7 +87,7 @@ namespace RimWorldAgent
             Console.WriteLine($"[Core] UIMessageBus: ws://0.0.0.0:{bridgePort}");
 
             AgentLoop.ConversationStore = new SqliteConversationStore(
-                Path.Combine(projectPath, "conversation.db"));
+                Path.Combine(projectPath, "conversation.db"), "exe-session");
 
             await engine.InitAsync();
 

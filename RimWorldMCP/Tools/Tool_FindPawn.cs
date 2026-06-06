@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Verse;
 using RimWorld;
@@ -11,7 +12,7 @@ namespace RimWorldMCP.Tools
     public class Tool_FindPawn : ITool
     {
         public string Name => "find_pawn";
-        public string Description => "按名称搜索地图上的殖民者、敌人、动物、访客等所有生物，返回位置和 ID。";
+        public string Description => "按名称搜索地图上的殖民者、敌人、动物、访客、囚犯、奴隶等所有生物，返回位置和 ID。支持正则表达式（如 .* 匹配所有）。";
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
             type = "object",
@@ -22,7 +23,7 @@ namespace RimWorldMCP.Tools
                 {
                     type = "string",
                     description = "类型过滤",
-                    @enum = new[] { "colonist", "enemy", "animal", "visitor", "all" },
+                    @enum = new[] { "colonist", "enemy", "animal", "visitor", "prisoner", "slave", "all" },
                     @default = "all"
                 },
                 max_results = new { type = "integer", description = "最大返回数，默认 10", @default = 10 },
@@ -63,19 +64,37 @@ namespace RimWorldMCP.Tools
 
                     var allPawns = map.mapPawns.AllPawnsSpawned.Where(p => !p.Fogged()).ToList();
 
-                    // 名称匹配
-                    var matched = allPawns.Where(p =>
-                    {
-                        if (p.Name != null)
+                    // 名称匹配（支持正则）
+                    var matched = nameMatchesRegex(searchName)
+                        ? allPawns.Where(p =>
                         {
-                            if (p.Name.ToStringShort.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                            if (p.Name.ToStringFull.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                        }
-                        if (p.LabelShort.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                        if (p.def.defName.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                        if (p.KindLabel.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                        return false;
-                    }).ToList();
+                            try
+                            {
+                                if (p.Name != null)
+                                {
+                                    if (Regex.IsMatch(p.Name.ToStringShort, searchName, RegexOptions.IgnoreCase)) return true;
+                                    if (Regex.IsMatch(p.Name.ToStringFull, searchName, RegexOptions.IgnoreCase)) return true;
+                                }
+                                if (Regex.IsMatch(p.LabelShort, searchName, RegexOptions.IgnoreCase)) return true;
+                                if (Regex.IsMatch(p.def.defName, searchName, RegexOptions.IgnoreCase)) return true;
+                                if (Regex.IsMatch(p.KindLabel, searchName, RegexOptions.IgnoreCase)) return true;
+                            }
+                            catch { /* regex 无效则降级 */ }
+                            return false;
+                        }).ToList()
+                        : allPawns.Where(p =>
+                        {
+                            // 退化为子串匹配（原行为）
+                            if (p.Name != null)
+                            {
+                                if (p.Name.ToStringShort.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                                if (p.Name.ToStringFull.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                            }
+                            if (p.LabelShort.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                            if (p.def.defName.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                            if (p.KindLabel.IndexOf(searchName, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                            return false;
+                        }).ToList();
 
                     // 种类过滤
                     if (kind != "all")
@@ -86,6 +105,8 @@ namespace RimWorldMCP.Tools
                             "enemy" => matched.Where(p => p.HostileTo(Faction.OfPlayer)).ToList(),
                             "animal" => matched.Where(p => p.RaceProps?.Animal == true).ToList(),
                             "visitor" => matched.Where(p => p.IsColonist == false && p.HostileTo(Faction.OfPlayer) == false && p.Faction != null).ToList(),
+                            "prisoner" => matched.Where(p => p.IsPrisonerOfColony).ToList(),
+                            "slave" => matched.Where(p => p.IsSlaveOfColony).ToList(),
                             _ => matched
                         };
                     }
@@ -126,6 +147,16 @@ namespace RimWorldMCP.Tools
                 catch (Exception ex) { return ToolResult.Error($"搜索失败: {ex.Message}"); }
             });
         }
+        /// <summary>检测 name 是否为正则表达式（含 . * + ? ^ $ | [ ] ( ) { } \ 等元字符）</summary>
+        private static bool nameMatchesRegex(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            foreach (char c in name)
+                if ("*+?^$|[](){}\\.-".IndexOf(c) >= 0)
+                    return true;
+            return false;
+        }
+
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args) => null;
     }
 }

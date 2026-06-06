@@ -56,6 +56,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         private SimpleMspServer.McpServiceHost? _agentHost;
 
         public CcbWebSocket? CcbWs => _ccbWs;
+        public McpClient? McpClient => _mcp;
         public bool IsReady => _initialized && _mcp != null;
 
         public AgentEngine(AgentEngineConfig cfg, IDbStore dbStore, IGameStateProvider gameState,

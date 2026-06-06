@@ -17,6 +17,7 @@ namespace RimWorldMCP.Harmony
         public int Priority { get; set; }
         public System.Collections.Generic.List<string>? Culprits { get; set; }
         public int Tick { get; set; }
+        public int Id { get; set; }    // Letter ID（仅 Letter 类型有效）
 
         public string PriorityLabel => Priority switch
         {

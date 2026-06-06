@@ -249,12 +249,13 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 
 ## Tool 清单（含 I18N 中文名 + 可达性检测）
 
-中文名称参见 `publish/Languages/ChineseSimplified/Keyed/RimWorldMCP_Tools.xml`。以下为全部 100 个工具。
+中文名称参见 `publish/Languages/ChineseSimplified/Keyed/RimWorldMCP_Tools.xml`。以下为全部 101 个工具。
 
-### 通用查询 (5)
+### 通用查询 (6)
 | Tool | 说明 | 数据源 |
 |------|------|--------|
 | `get_game_context` | 游戏全局状态快照 | `Find.CurrentMap`, `Find.TickManager`, `Find.ResearchManager` |
+| `get_session_id` | 获取当前游戏 MCP 会话 ID（Scribe 持久化 GUID） | `GameComponent_McpServer.CurrentSessionId` |
 | `get_resources` | 资源库存报告 | `map.resourceCounter.AllCountedAmounts` |
 | `check_colony` | 殖民地提醒（空闲/崩溃/流血/食物/防御） | `PawnsFinder`, `map.wealthWatcher` |
 | `toggle_pause` | 切换游戏暂停状态，恢复时设为最大速度 | `Find.TickManager.CurTimeSpeed` (入队) |

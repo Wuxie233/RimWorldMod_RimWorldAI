@@ -57,6 +57,8 @@ namespace RimWorldMCP.Tools
             .GetProperty("CurTotalCurrencyCostForSource")!;
         private static readonly PropertyInfo _allTradeablesProp = typeof(TradeDeal)
             .GetProperty("AllTradeables")!;
+        private static readonly MethodInfo _addToTradeables = typeof(TradeDeal)
+            .GetMethod("AddToTradeables", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         // 虚拟商船缓存：key = "factionName|traderKindDefName"，TTL 15 秒实时（约 1 游戏小时/超快）
         private static readonly Dictionary<string, (TradeShip ship, int cachedTick)> _vcache = new();
@@ -157,6 +159,33 @@ namespace RimWorldMCP.Tools
                     TradeSession.playerNegotiator = pawn;
                     var deal = new TradeDeal();
                     var tradeables = (List<Tradeable>)_allTradeablesProp.GetValue(deal);
+
+                    // 虚空交易绕过信标：没有信标时直接将所有地图物品加入交易
+                    bool hasPlayerItems = tradeables.Any(t => !t.IsCurrency && t.CountToTransferToSource > 0);
+                    if (!hasPlayerItems && (sellList.Count > 0 || buyList.Count > 0))
+                    {
+                        McpLog.Info("[Trade] 绕过信标限制，直接添加地图物品到交易");
+                        foreach (var thing in map.listerThings.AllThings)
+                        {
+                            try
+                            {
+                                if (TradeUtility.PlayerSellableNow(thing, virtShip))
+                                    _addToTradeables.Invoke(deal, new object[] { thing, Transactor.Colony });
+                            }
+                            catch { /* 单个物品跳过 */ }
+                        }
+                        // 遍历殖民地所有可出售的Pawn
+                        foreach (var p in map.mapPawns.AllPawnsSpawned)
+                        {
+                            if (p.Faction == Faction.OfPlayer && !p.Dead && !p.Destroyed
+                                && TradeUtility.PlayerSellableNow(p, virtShip))
+                            {
+                                try { _addToTradeables.Invoke(deal, new object[] { p, Transactor.Colony }); }
+                                catch { }
+                            }
+                        }
+                        tradeables = (List<Tradeable>)_allTradeablesProp.GetValue(deal);
+                    }
 
                     if (previewOnly)
                     {

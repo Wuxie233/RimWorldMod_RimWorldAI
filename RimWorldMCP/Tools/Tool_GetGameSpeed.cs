@@ -1,7 +1,9 @@
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Verse;
+using RimWorld;
 
 namespace RimWorldMCP.Tools
 {
@@ -60,12 +62,30 @@ namespace RimWorldMCP.Tools
                 var paused = IsPaused();
                 var tick = tm?.TicksGame ?? 0;
                 var day = tick / 60000;
+
+                // 检测窗口
+                int windowsOpen = 0;
+                string? windowsNames = null;
+                var ws = Find.WindowStack;
+                if (ws != null && ws.Windows != null)
+                {
+                    var dialogs = ws.Windows.Where(w =>
+                        (w.layer == WindowLayer.Dialog || w.layer == WindowLayer.SubSuper || w.layer == WindowLayer.Super)
+                        && w is not FloatMenu && w.GetType().Name != "Dialog_AiChat"
+                        && w.GetType().Name != "ImmediateWindow").ToList();
+                    windowsOpen = dialogs.Count;
+                    if (windowsOpen > 0)
+                        windowsNames = string.Join(", ", dialogs.Take(3).Select(w => w.GetType().Name));
+                }
+
                 var json = JsonSerializer.Serialize(new
                 {
                     paused,
                     speed,
                     tick,
-                    day
+                    day,
+                    windows_open = windowsOpen,
+                    windows_names = windowsNames
                 });
                 return ToolResult.Success(json);
             });

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 using Verse;
@@ -63,7 +64,8 @@ namespace RimWorldMCP.Tools
         private const float ClusterDistance = 20f;
 
         /// <summary>
-        /// 每帧由 GameComponentUpdate 末尾调用。如果视角长时间无殖民者，自动聚类并移动到最高优先级簇。
+        /// 每帧由 GameComponentUpdate 末尾调用。战斗时主动聚焦战斗中的殖民者集群；
+        /// 非战斗时仅当视野长时间无殖民者时回追。
         /// </summary>
         public static void AutoTrackColonistsTick()
         {
@@ -73,20 +75,54 @@ namespace RimWorldMCP.Tools
                 return;
 
             var now = Time.realtimeSinceStartupAsDouble;
-            if (now - _lastAutoTrackCheckReal < AutoTrackCheckIntervalSec)
-                return;
-            _lastAutoTrackCheckReal = now;
 
             var map = Find.CurrentMap;
             if (map == null) return;
 
             var colonists = map.mapPawns.FreeColonistsSpawned;
+            if (colonists.Count == 0) return;
 
-            if (colonists.Count > 0)
+            // 检查是否有战斗中的殖民者（征召 或 战斗 Job）
+            var combatColonists = colonists.Where(c =>
+                c.Drafted ||
+                (c.CurJobDef != null && (
+                    c.CurJobDef.defName == "AttackMelee" ||
+                    c.CurJobDef.defName == "AttackStatic" ||
+                    c.CurJobDef.defName == "WaitAndAttack" ||
+                    c.CurJobDef.defName == "WaitCombat"))
+            ).ToList();
+
+            if (combatColonists.Count > 0)
+            {
+                // 战斗模式：快速检查间隔（1.5 秒），始终聚焦战斗集群
+                if (now - _lastAutoTrackCheckReal < 1.5)
+                    return;
+                _lastAutoTrackCheckReal = now;
+
+                var combatCluster = FindBestCluster(combatColonists);
+                if (combatCluster == null) return;
+
+                var viewRect = Find.CameraDriver.CurrentViewRect;
+                var cc = combatCluster.Value;
+                int cx = (cc.minX + cc.maxX) / 2, cz = (cc.minZ + cc.maxZ) / 2;
+
+                // 战斗集群的中心点已在视野内则不重复移动
+                if (viewRect.Contains(new IntVec3(cx, 0, cz)))
+                    return;
+
+                _ = MoveToRange(cc.minX, cc.minZ, cc.maxX, cc.maxZ);
+                _noColonistVisibleSince = now;
+                return;
+            }
+
+            // 非战斗模式：原逻辑，仅当视野内无殖民者时才追踪
+            if (now - _lastAutoTrackCheckReal < AutoTrackCheckIntervalSec)
+                return;
+            _lastAutoTrackCheckReal = now;
+
             {
                 var viewRect = Find.CameraDriver.CurrentViewRect;
 
-                // 检查当前视野内是否有殖民者
                 bool anyVisible = false;
                 foreach (var c in colonists)
                 {
@@ -104,7 +140,6 @@ namespace RimWorldMCP.Tools
                 }
             }
 
-            // 累计未见到殖民者的时间
             if (_noColonistVisibleSince <= 0)
                 _noColonistVisibleSince = now;
             if (now - _noColonistVisibleSince < AutoTrackTriggerDelaySec)
@@ -112,7 +147,6 @@ namespace RimWorldMCP.Tools
 
             if (colonists.Count > 0)
             {
-                // 触发追踪：聚类 + 评分 + 移动（fire-and-forget，不阻塞帧）
                 var bestCluster = FindBestCluster(colonists);
                 if (bestCluster == null) return;
 
@@ -122,7 +156,6 @@ namespace RimWorldMCP.Tools
             }
             else
             {
-                // 无殖民者：全景俯瞰地图中心
                 _ = MoveToRange(0, 0, map.Size.x - 1, map.Size.z - 1);
             }
         }

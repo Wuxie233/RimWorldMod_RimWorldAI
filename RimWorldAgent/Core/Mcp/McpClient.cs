@@ -137,7 +137,8 @@ namespace RimWorldAgent.Core.Mcp
                             Tick = notif.Params?["Tick"]?.GetValue<int>() ?? 0,
                             Method = notif.Method,
                             Payload = notif.Params?.ToJsonString(_readableJson),
-                            Level = (EventLevel)(notif.Params?["level"]?.GetValue<int>() ?? 2) // 缺省 Warning
+                            Level = (EventLevel)(notif.Params?["level"]?.GetValue<int>() ?? 2), // 缺省 Warning
+                            LetterId = ParseOptionalInt(notif.Params?["letterId"])
                         });
                         break;
                 }
@@ -146,6 +147,14 @@ namespace RimWorldAgent.Core.Mcp
             {
                 CoreLog.Warn($"[McpClient] 通知解析失败 ({notif.Method}): {ex.Message}");
             }
+        }
+
+        private static int? ParseOptionalInt(JsonNode? node)
+        {
+            if (node == null) return null;
+            if (node is JsonValue jv && jv.TryGetValue<int>(out var v))
+                return v;
+            return null;
         }
 
         // ===== Transport Wrapper =====

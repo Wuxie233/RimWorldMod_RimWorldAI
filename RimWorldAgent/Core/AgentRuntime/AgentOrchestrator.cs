@@ -138,5 +138,6 @@ namespace RimWorldAgent.Core.AgentRuntime
         public int Tick { get; set; }
         public string Method { get; set; } = "";
         public EventLevel Level { get; set; } = EventLevel.Warning; // 缺省 Warning，向后兼容
+        public int? LetterId { get; set; }
     }
 }

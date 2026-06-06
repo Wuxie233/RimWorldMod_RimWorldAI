@@ -17,12 +17,12 @@ namespace RimWorldMCP.Harmony
                 postfix: new HarmonyMethod(typeof(Hook_PlanTransparency), nameof(Postfix_CreateMaterial)));
         }
 
-        /// <summary>将 Plan 材质的 alpha 设为 0.12（原版默认 0.4）</summary>
+        /// <summary>将 Plan 材质的 alpha 设为 0.06（原版默认 0.4）</summary>
         public static void Postfix_CreateMaterial(ref Material __result)
         {
             if (__result == null) return;
             var color = __result.color;
-            color.a = 0.12f;
+            color.a = 0.06f;
             __result.color = color;
         }
     }
