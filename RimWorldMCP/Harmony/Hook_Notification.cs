@@ -39,14 +39,12 @@ namespace RimWorldMCP.Harmony
                     if (text.Length > 500) text = text.Substring(0, 497) + "...";
                 }
 
-                var dl = ClassifyLetter(let.def);
-                NotificationBus.LastThreatReason = dl;
                 NotificationBus.Enqueue(new Notification
                 {
                     Type = NotificationType.Letter,
                     Label = label,
                     Text = text,
-                    DangerLabel = dl,
+                    DangerLabel = ClassifyLetter(let.def),
                     Tick = Find.TickManager?.TicksGame ?? 0
                 });
             }
@@ -68,13 +66,11 @@ namespace RimWorldMCP.Harmony
                 string text = msg.text;
                 if (text.Length > 300) text = text.Substring(0, 297) + "...";
 
-                var dl = ClassifyMessage(msg.def);
-                NotificationBus.LastThreatReason = dl;
                 NotificationBus.Enqueue(new Notification
                 {
                     Type = NotificationType.Message,
                     Text = text,
-                    DangerLabel = dl,
+                    DangerLabel = ClassifyMessage(msg.def),
                     Tick = Find.TickManager?.TicksGame ?? 0
                 });
             }
@@ -157,10 +153,8 @@ namespace RimWorldMCP.Harmony
         {
             static void Postfix()
             {
-                string reason = NotificationBus.LastThreatReason;
-                if (string.IsNullOrEmpty(reason)) reason = "突发威胁";
-                NotificationBus.NotifySpeedSlowdown($"游戏速度强制降至1x ({reason}，800 ticks)");
-                Tool_GetGameSpeed.LastSlowdownReason = reason;
+                NotificationBus.NotifySpeedSlowdown("游戏速度强制降至1x (800 ticks)");
+                Tool_GetGameSpeed.LastSlowdownReason = "突发威胁";
                 Tool_GetGameSpeed.LastSlowdownTicksUntil = Find.TickManager.TicksGame + 800;
             }
         }
@@ -170,10 +164,8 @@ namespace RimWorldMCP.Harmony
         {
             static void Postfix()
             {
-                string reason = NotificationBus.LastThreatReason;
-                if (string.IsNullOrEmpty(reason)) reason = "战斗/火灾/越狱";
-                NotificationBus.NotifySpeedSlowdown($"游戏速度强制降至1x ({reason}，240 ticks)");
-                Tool_GetGameSpeed.LastSlowdownReason = reason;
+                NotificationBus.NotifySpeedSlowdown("游戏速度强制降至1x (240 ticks)");
+                Tool_GetGameSpeed.LastSlowdownReason = "战斗/火灾/越狱";
                 Tool_GetGameSpeed.LastSlowdownTicksUntil = Find.TickManager.TicksGame + 240;
             }
         }
