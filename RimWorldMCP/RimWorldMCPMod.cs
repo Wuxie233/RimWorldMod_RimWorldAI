@@ -58,7 +58,7 @@ namespace RimWorldMCP
             // MCP 服务器
             h += 100f;
             // 地图渲染
-            h += 100f;
+            h += 150f;
             // OSS
             h += 50f; // 标题
             h += 40f; // 启用开关（始终可见）
@@ -132,6 +132,15 @@ namespace RimWorldMCP
                 Settings.GridCompression = (CompressionMethod)next;
             }
             listing.Label("  RLE 和行引用可降低 Token 消耗 60-80%");
+            listing.Gap(4f);
+            listing.Label($"网格查询模式: {McpModSettings.GridQueryModeLabels[(int)Settings.GridQueryMode]}");
+            if (listing.ButtonText("切换查询模式"))
+            {
+                var next = (int)Settings.GridQueryMode + 1;
+                if (next >= McpModSettings.GridQueryModeLabels.Length) next = 0;
+                Settings.GridQueryMode = (GridQueryMode)next;
+            }
+            listing.Label("  Chunk: 按分块查询（压缩输出）| 坐标: 按坐标范围查询（逐行输出）");
             listing.Gap(4f);
 
             // ==================== OSS 截图上传 ====================

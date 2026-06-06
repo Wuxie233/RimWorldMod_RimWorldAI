@@ -161,11 +161,11 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 | Tool | 说明 | 参数 |
 |------|------|------|
 | `get_tile_detail` | 指定坐标范围详情（建筑/物品/植物/生物） | pos_x, pos_y, end_x, end_y |
-| `get_tile_grid` | 文本化字符网格地图（64 种符号） | pos_x, pos_y, end_x, end_y |
-| `fertility_grid` | 地面肥沃度视图（字符网格） | pos_x, pos_y, end_x, end_y |
-| `terrain_grid` | 地形类型视图（字符网格） | pos_x, pos_y, end_x, end_y |
-| `temperature_grid` | 温度分布视图（字符网格） | pos_x, pos_y, end_x, end_y |
-| `pollution_grid` | 污染程度视图（字符网格） | pos_x, pos_y, end_x, end_y |
+| `get_tile_grid` | 文本化字符网格地图（64 种符号） | chunk_id 或 pos_x, pos_y, end_x, end_y（视设置） |
+| `fertility_grid` | 地面肥沃度视图（字符网格） | chunk_id 或 pos_x, pos_y, end_x, end_y（视设置） |
+| `terrain_grid` | 地形类型视图（字符网格） | chunk_id 或 pos_x, pos_y, end_x, end_y（视设置） |
+| `temperature_grid` | 温度分布视图（字符网格） | chunk_id 或 pos_x, pos_y, end_x, end_y（视设置） |
+| `pollution_grid` | 污染程度视图（字符网格） | chunk_id 或 pos_x, pos_y, end_x, end_y（视设置） |
 
 ### 制造 (4)
 | Tool | 说明 | 数据源/操作 |

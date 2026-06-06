@@ -3,6 +3,7 @@ using Verse;
 namespace RimWorldMCP
 {
     public enum CompressionMethod { Uncompressed, RLE, RowRefRLE }
+    public enum GridQueryMode { Chunk, Pos }
 
     public class McpModSettings : ModSettings
     {
@@ -31,9 +32,11 @@ namespace RimWorldMCP
         public int ChunkWidth = 32;
         public int ChunkHeight = 32;
         public CompressionMethod GridCompression = CompressionMethod.RLE;
+        public GridQueryMode GridQueryMode = GridQueryMode.Chunk;
 
         public static readonly string[] LogLevelLabels = { "Debug", "Info", "Warn", "Error" };
         public static readonly string[] CompressionMethodLabels = { "未压缩", "RLE", "行引用+RLE" };
+        public static readonly string[] GridQueryModeLabels = { "Chunk", "坐标" };
 
         public override void ExposeData()
         {
@@ -58,6 +61,9 @@ namespace RimWorldMCP
             Scribe_Values.Look(ref ChunkHeight, "chunkHeight", 32);
             Scribe_Values.Look(ref gridCompression, "gridCompression", (int)CompressionMethod.RLE);
             GridCompression = (CompressionMethod)gridCompression;
+            var gridQueryMode = (int)GridQueryMode;
+            Scribe_Values.Look(ref gridQueryMode, "gridQueryMode", (int)GridQueryMode.Chunk);
+            GridQueryMode = (GridQueryMode)gridQueryMode;
         }
     }
 }
