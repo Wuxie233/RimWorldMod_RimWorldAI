@@ -45,7 +45,7 @@ Grid Tool (chunk_id → 单 Chunk)
 | `Compression/CompressorFactory.cs` | 工厂：`Create(method) → IChunkCompressor` |
 | `MapRendering/MapChunk.cs` | 分块数据模型：XIndex/ZIndex, Bounds, CompressedData, IsAllFog |
 | `MapRendering/MapChunker.cs` | `GetChunkByIndex()` / `TryParseChunkId()` / `FormatChunkId()` / `GetIntersectingChunks()` |
-| `MapRendering/SymbolDictionary.cs` | 固定映射（~150 常用 Def）+ 动态分配（Unicode 池），JSON 持久化 |
+| `MapRendering/SymbolDictionary.cs` | 词表驱动（Symbols.json symbols 字段）+ 兜底池分配（fallback_pool），每次启动重建 |
 | `MapRendering/CellCharProviders.cs` | 5 种网格的单元格→字符映射函数 |
 | `Tools/Tool_ListChunks.cs` | 矩形范围 → chunk_id 列表 |
 | `Tools/Tool_GetSymbolDictionary.cs` | 字典查询：all/forward/reverse/by_chars |

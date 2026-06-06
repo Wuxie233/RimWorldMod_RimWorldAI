@@ -87,14 +87,26 @@ RimWorld 的 `IntVec3(x, y, z)` 字段含义（源码 `IntVec3.cs`, `CellRect.cs
 
 ### 词表符号系统（SymbolDictionary）
 
-网格地图中每个 Def（建筑/物品/植物/地形）用**单个 Unicode 字符**表示。字符映射由词表文件 `resource/Symbols.json` 驱动，格式 `{defName: {char, group}}`。
+网格地图中每个 Def（建筑/物品/植物/地形）用**单个 Unicode 字符**表示。字符映射由词表文件 `Symbols.json`（构建时复制到 `1.6/Assemblies/`，与 DLL 同目录）驱动，格式：
+
+```json
+{
+  "version": 1,
+  "symbols": { "Wall": {"char":"#","group":"Building"}, ... },
+  "fallback_pool": ["α","β",...]
+}
+```
+
+- `symbols` — 已分配 def→{char,group} 映射
+- `fallback_pool` — 未使用字符兜底池，供运行时新增 def（mod 更新）取用
 
 **工作流**：
-1. `scripts/generate_symbols.py` — 从 RimWorld XML 自动生成词表，每个 Def 分配独立 Unicode 字符
-2. AI 手工编辑 `resource/Symbols.json`，将核心 Def 的字符替换为语义匹配的 ASCII 符号（如 `Wall→#`, `Door→D`, `Steel→S`）
-3. `scripts/check_symbols.py` — 校验：一对一映射、无固定网格冲突、无控制字符
+1. `scripts/generate_symbols.py --pool-size 4000` — 从 RimWorld XML 生成 symbols + fallback_pool
+2. AI 手工编辑 `Symbols.json`，将核心 Def 的字符替换为语义匹配的 ASCII 符号
+3. `scripts/check_symbols.py` — 校验：一对一映射、fallback_pool 无重复、无固定网格冲突
 
-**运行时**：`SymbolDictionary.Initialize()` 每次启动直接读词表+游戏 Def 重建，无缓存文件。词表中没有的 Def 走兜底动态池分配。`DictHash` 供网格工具输出，验证 LLM 侧符号表一致。
+**运行时**：`SymbolDictionary.Initialize()` 每次启动直接读词表重建，无缓存。
+词表缺失或损坏直接抛异常。Rebuild 分两轮：第一轮从 `symbols` 注册，第二轮缺的 def 从 `fallback_pool` 取（`RemoveAt(0)`）。兜底池耗尽抛异常要求重新生成。C# 不含任何硬编码符号池。
 
 **固定网格**（不经过词表，字符硬编码）：
 - `fertility_grid` / `temperature_grid` / `pollution_grid` 使用 `▓▒░·○◎●█P.?` 等字符

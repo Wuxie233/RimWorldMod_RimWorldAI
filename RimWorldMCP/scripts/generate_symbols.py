@@ -272,6 +272,10 @@ def main():
         default=["Core", "Ideology", "Royalty", "Biotech", "Anomaly"],
         help="要扫描的 DLC 目录名列表，默认: Core Ideology Royalty Biotech Anomaly",
     )
+    parser.add_argument(
+        "--pool-size", type=int, default=4000,
+        help="兜底池大小，默认 4000",
+    )
     args = parser.parse_args()
 
     rimworld_dir = args.rimworld_dir
@@ -307,15 +311,37 @@ def main():
         # 组装条目
         symbols[name] = {"char": ch, "group": info["group"]}
 
-    # ----- 4. 序列化写入 -----
-    output = {"version": 1, "symbols": symbols}
+    # ----- 4. 构建兜底池 -----
+    # 从符号池中 symbols 用完后剩余的部分 + 溢出部分取 pool_size 个字符
+    used_chars = set(v["char"] for v in symbols.values())
+    fallback_pool = []
+    for c in pool:
+        if c not in used_chars and c not in RESERVED_CHARS:
+            fallback_pool.append(c)
+            if len(fallback_pool) >= args.pool_size:
+                break
+
+    # 池不够，从私有区补充
+    fallback_overflow = 0
+    while len(fallback_pool) < args.pool_size:
+        c = chr(0xE000 + fallback_overflow)
+        if c not in used_chars and c not in RESERVED_CHARS:
+            fallback_pool.append(c)
+        fallback_overflow += 1
+
+    # ----- 5. 序列化写入 -----
+    output = {
+        "version": 1,
+        "symbols": symbols,
+        "fallback_pool": fallback_pool,
+    }
 
     out_dir = os.path.dirname(output_path) or "."
     os.makedirs(out_dir, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
-    # ----- 5. 统计输出 -----
+    # ----- 6. 统计输出 -----
     groups = {}
     for v in symbols.values():
         g = v["group"]
@@ -324,6 +350,7 @@ def main():
     print(f"输出: {output_path}")
     print(f"条目: {len(symbols)}（溢出: {overflow}）")
     print(f"分类: {dict(groups)}")
+    print(f"兜底池: {len(fallback_pool)} 个字符")
     print()
     print("下一步: 由 AI 对重要 def 手工润色字符映射，使语义匹配。")
     print("  修改后重启 RimWorld 即生效。")
