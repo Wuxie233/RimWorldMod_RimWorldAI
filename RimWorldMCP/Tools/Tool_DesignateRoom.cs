@@ -164,12 +164,12 @@ namespace RimWorldMCP.Tools
                             return ToolResult.Error($"找不到门 ThingDef: {doorDefName}。请确认 DefName 拼写正确。");
                     }
 
-                    ThingDef? floorDef = null;
+                    TerrainDef? floorDef = null;
                     if (floorCount > 0)
                     {
-                        floorDef = DefDatabase<ThingDef>.GetNamed(floorDefName, false);
+                        floorDef = DefDatabase<TerrainDef>.GetNamed(floorDefName, false);
                         if (floorDef == null)
-                            return ToolResult.Error($"找不到地板 ThingDef: {floorDefName}。请确认 DefName 拼写正确。");
+                            return ToolResult.Error($"找不到地板 TerrainDef: {floorDefName}。请确认 DefName 拼写正确（如 Concrete, WoodPlankFloor, PavedTile, SterileTile）。");
                     }
 
                     int placedWalls = 0, placedDoors = 0, placedFloors = 0, skippedSharedWalls = 0;
@@ -243,7 +243,6 @@ namespace RimWorldMCP.Tools
                         else wallStuff = ThingDef.Named("Steel");
                     }
                     var doorStuff = (doorDef?.MadeFromStuff == true) ? ThingDef.Named("Steel") : null;
-                    var floorStuff = (floorDef?.MadeFromStuff == true) ? ThingDef.Named("Steel") : null;
 
                     // 资源检查（聚合墙体 + 门 + 地板，仅警告不阻断）
                     string? resourceWarning = null;
@@ -265,7 +264,19 @@ namespace RimWorldMCP.Tools
                         if (doorDef != null && doorCount > 0)
                             AddToAggregate(doorDef, doorStuff, doorCount);
                         if (floorDef != null && floorCount > 0)
-                            AddToAggregate(floorDef, floorStuff, floorCount);
+                        {
+                            var floorCost = ResourceCheckHelper.CalculateCost((BuildableDef)floorDef, null);
+                            if (floorCost.Count > 0)
+                            {
+                                foreach (var kv in floorCost)
+                                {
+                                    if (aggregate.ContainsKey(kv.Key))
+                                        aggregate[kv.Key] += kv.Value * floorCount;
+                                    else
+                                        aggregate[kv.Key] = kv.Value * floorCount;
+                                }
+                            }
+                        }
                         if (aggregate.Count > 0)
                         {
                             var shortage = ResourceCheckHelper.CheckResources(map, aggregate);
@@ -280,9 +291,6 @@ namespace RimWorldMCP.Tools
                     if (doorDef != null && doorDef.graphicData == null)
                         return ToolResult.Error($"{doorDefName} 缺少 graphicData 图形定义，无法创建门设计器。");
 
-                    if (floorDef != null && floorDef.graphicData == null)
-                        return ToolResult.Error($"{floorDefName} 缺少 graphicData 图形定义，无法创建地板设计器。");
-
                     // 复用游戏原生 Designator_Build
                     var wallDes = new Designator_Build(wallDef);
                     if (wallStuff != null) wallDes.SetStuffDef(wallStuff);
@@ -296,10 +304,7 @@ namespace RimWorldMCP.Tools
 
                     Designator_Build? floorDes = null;
                     if (floorDef != null)
-                    {
                         floorDes = new Designator_Build(floorDef);
-                        if (floorStuff != null) floorDes.SetStuffDef(floorStuff);
-                    }
 
                     // 验证殖民者可达
                     if (!ignore_unreachable)
@@ -318,11 +323,12 @@ namespace RimWorldMCP.Tools
                         {
                             var ipos = new IntVec3(wx, 0, wy);
                             if (ipos.Fogged(map)) { blockedWalls.Add($"({wx},{wy}) 迷雾中不可见"); continue; }
-                            bool isDoorPos = doorPosSet.Contains((wx, wy)) && doorDes != null;
+                            bool isDoorPos = doorPosSet.Contains((wx, wy)) && doorDef != null;
                             // 共用墙跳过
                             if (!isDoorPos && RoomGenUtility.IsWallAt(ipos, map)) continue;
-                            Designator_Build des = isDoorPos ? doorDes! : wallDes;
-                            var accept = des.CanDesignateCell(ipos);
+                            var def = isDoorPos ? doorDef : wallDef;
+                            var stuff = isDoorPos ? doorStuff : wallStuff;
+                            var accept = GenConstruct.CanPlaceBlueprintAt(def, ipos, Rot4.North, map, false, null, null, stuff);
                             if (!accept.Accepted)
                             {
                                 var reason = accept.Reason ?? "不可放置";
@@ -429,6 +435,10 @@ namespace RimWorldMCP.Tools
                 catch (Exception ex)
                 {
                     return ToolResult.Error($"房间建造失败: {ex.Message}");
+                }
+                finally
+                {
+                    Find.DesignatorManager.Deselect();
                 }
             });
         }

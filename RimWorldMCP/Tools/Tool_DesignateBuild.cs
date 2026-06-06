@@ -65,11 +65,16 @@ namespace RimWorldMCP.Tools
                     if (Find.CurrentMap == null)
                         return ToolResult.Error("没有当前地图，请先加载游戏存档。");
 
-                    ThingDef def = DefDatabase<ThingDef>.GetNamed(thingDefName, false);
+                    ThingDef? def = DefDatabase<ThingDef>.GetNamed(thingDefName, false);
+                    TerrainDef? terrainDef = null;
                     if (def == null)
-                        return ToolResult.Error($"找不到 ThingDef: {thingDefName}。请确认 DefName 拼写正确。\n\n💡 提示: 用 search_thing_def(keyword=\"{thingDefName}\", category=\"building\") 查找可用建筑。");
-                    if (!(def is BuildableDef))
-                        return ToolResult.Error($"{thingDefName} 不是可建造的类型。\n\n💡 提示: 用 search_thing_def(keyword=\"{thingDefName}\", category=\"building\") 查找可用建筑。");
+                    {
+                        terrainDef = DefDatabase<TerrainDef>.GetNamed(thingDefName, false);
+                        if (terrainDef == null)
+                            return ToolResult.Error($"找不到 Def: {thingDefName}。请确认 DefName 拼写正确。\n\n💡 提示: 用 search_thing_def(keyword=\"{thingDefName}\", category=\"building\") 查找可用建筑，或用 designate_room(floor_defName=\"{thingDefName}\") 铺设地板。");
+                    }
+
+                    bool isFloor = terrainDef != null;
 
                     Rot4 rot = rotationStr switch
                     {
@@ -79,6 +84,23 @@ namespace RimWorldMCP.Tools
                         "West" => Rot4.West,
                         _ => Rot4.North
                     };
+
+                    IntVec3 pos = new IntVec3(posX, 0, posY);
+
+                    if (isFloor)
+                    {
+                        // ===== 地板路径（TerrainDef） =====
+                        if (pos.Fogged(Find.CurrentMap))
+                            return ToolResult.Error($"目标位置 ({posX}, {posY}) 被迷雾覆盖，无法建造。请先探索该区域。");
+
+                        var floorDesignator = new Designator_Build(terrainDef);
+                        floorDesignator.DesignateSingleCell(pos);
+                        return ToolResult.Success($"已成功在坐标 ({posX}, {posY}) 放置 {terrainDef.label} ({thingDefName})。");
+                    }
+
+                    // ===== 建筑路径（ThingDef） — def 非空 =====
+                    if (def == null)
+                        return ToolResult.Error($"内部错误: ThingDef 查询返回空: {thingDefName}");
 
                     ThingDef? stuff = null;
                     if (!string.IsNullOrEmpty(stuffDefName))
@@ -94,8 +116,6 @@ namespace RimWorldMCP.Tools
 
                     if (stuff != null && !def.MadeFromStuff)
                         return ToolResult.Error($"{def.label} ({thingDefName}) 不支持材料选择，请勿指定 stuff_defName。");
-
-                    IntVec3 pos = new IntVec3(posX, 0, posY);
 
                     if (def.graphicData == null)
                         return ToolResult.Error($"{thingDefName} 缺少 graphicData 图形定义，无法创建设计器。\n\n💡 提示: 用 search_thing_def(keyword=\"{thingDefName}\", category=\"building\") 查找类似可用建筑。");
