@@ -29,7 +29,7 @@ import sys
 import unicodedata
 
 # 固定网格独占字符 — 不能分配给词表
-RESERVED = set("▓▒░·○◎●█P.?")
+RESERVED = set("▓▒░·○◎●█P.?\"'")
 
 # 不可渲染的 Unicode 区块 (私有区/代理/特殊)
 BAD_RANGES = [
@@ -62,8 +62,8 @@ PRESET_MAP = {
     "SoilRich":         ":",
     "Gravel":           "`",
     "Sand":             ";",
-    "SoftSand":         "\"",
-    "PackedDirt":       "'",
+    "SoftSand":         "∺",
+    "PackedDirt":       "∎",
     "Mud":              "%",
     "Marsh":            "≈",
     "Ice":              "=",
