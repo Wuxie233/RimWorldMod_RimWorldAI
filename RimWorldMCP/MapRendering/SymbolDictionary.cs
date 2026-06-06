@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using RimWorld;
-using UnityEngine;
 using Verse;
 
 namespace RimWorldMCP.MapRendering
@@ -15,7 +14,6 @@ namespace RimWorldMCP.MapRendering
         private static Dictionary<string, char> _forward = new();
         private static Dictionary<char, (string DefName, string Label, string Category)> _reverse = new();
         private static string _dictHash = "";
-        private const int CurrentVersion = 5;  // v5: 词表驱动 + 兜底动态分配
 
         // ---- 符号池（兜底分配用） ----
 
@@ -49,19 +47,11 @@ namespace RimWorldMCP.MapRendering
         {
             try
             {
-                if (Load())
-                {
-                    McpLog.Info($"[SymbolDictionary] 从缓存加载, 条目: {_forward.Count}, Hash: {_dictHash}");
-                    return;
-                }
-
                 Rebuild();
-                Save();
             }
             catch (Exception ex)
             {
                 McpLog.Error($"[SymbolDictionary] 初始化失败: {ex.Message}");
-                Rebuild();
             }
         }
 
@@ -102,7 +92,7 @@ namespace RimWorldMCP.MapRendering
                         && prop.Value.TryGetProperty("char", out var jCh))
                         charStr = jCh.GetString();
 
-                    if (string.IsNullOrEmpty(charStr) || charStr.Length != 1)
+                    if (charStr == null || charStr.Length != 1)
                     {
                         McpLog.Warn($"[SymbolDictionary] 词表跳过无效条目: {defName}");
                         continue;
@@ -263,109 +253,5 @@ namespace RimWorldMCP.MapRendering
             return sb.ToString();
         }
 
-        // ---- 持久化 ----
-
-        public static void Save()
-        {
-            try
-            {
-                var payload = new
-                {
-                    version = CurrentVersion,
-                    hash = _dictHash,
-                    forward = _forward.Select(kv => new { d = kv.Key, s = kv.Value.ToString() }).ToList(),
-                    reverse = _reverse.Select(kv => new
-                    {
-                        s = kv.Key.ToString(),
-                        n = kv.Value.DefName,
-                        l = kv.Value.Label,
-                        c = kv.Value.Category
-                    }).ToList()
-                };
-
-                string json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = false });
-                string path = GetCacheFilePath();
-                File.WriteAllText(path, json, Encoding.UTF8);
-            }
-            catch (Exception ex)
-            {
-                McpLog.Warn($"[SymbolDictionary] 保存失败: {ex.Message}");
-            }
-        }
-
-        public static bool Load()
-        {
-            try
-            {
-                string path = GetCacheFilePath();
-                if (!File.Exists(path)) return false;
-
-                string json = File.ReadAllText(path, Encoding.UTF8);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("version", out var v) && v.TryGetInt32(out var savedVer) && savedVer < CurrentVersion)
-                {
-                    McpLog.Info($"[SymbolDictionary] 缓存版本过旧 (v{savedVer}), 重建");
-                    return false;
-                }
-
-                string savedHash = "";
-                if (root.TryGetProperty("hash", out var h))
-                    savedHash = h.GetString() ?? "";
-
-                var allDefs = new List<Def>();
-                allDefs.AddRange(DefDatabase<ThingDef>.AllDefs);
-                allDefs.AddRange(DefDatabase<TerrainDef>.AllDefs);
-                var sortedNames = allDefs.Select(d => d.defName).OrderBy(n => n).ToList();
-                string currentHash = string.Join(",", sortedNames).Length.ToString("x8");
-
-                if (savedHash != currentHash)
-                {
-                    McpLog.Info($"[SymbolDictionary] 字典 Hash 不匹配 ({savedHash} vs {currentHash}), 重建");
-                    return false;
-                }
-
-                _forward = new();
-                _reverse = new();
-
-                if (root.TryGetProperty("forward", out var fwd))
-                {
-                    foreach (var item in fwd.EnumerateArray())
-                    {
-                        var d = item.GetProperty("d").GetString() ?? "";
-                        var s = item.GetProperty("s").GetString() ?? "?";
-                        if (d != "" && s != "")
-                            _forward[d] = s[0];
-                    }
-                }
-
-                if (root.TryGetProperty("reverse", out var rev))
-                {
-                    foreach (var item in rev.EnumerateArray())
-                    {
-                        var s = item.GetProperty("s").GetString() ?? "?";
-                        var n = item.GetProperty("n").GetString() ?? "";
-                        var l = item.GetProperty("l").GetString() ?? n;
-                        var c = item.GetProperty("c").GetString() ?? "";
-                        if (s != "")
-                            _reverse[s[0]] = (n, l, c);
-                    }
-                }
-
-                _dictHash = savedHash;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                McpLog.Warn($"[SymbolDictionary] 加载失败: {ex.Message}");
-                return false;
-            }
-        }
-
-        private static string GetCacheFilePath()
-        {
-            return Path.Combine(Application.persistentDataPath, "RimWorldMCP_SymbolDictionary.json");
-        }
     }
 }

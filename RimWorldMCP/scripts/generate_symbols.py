@@ -37,8 +37,8 @@
 
  ## 缓存刷新
 
- 修改 Symbols.json 后，删除 RimWorld 持久化目录下的缓存文件使生效:
-   {persistentDataPath}/RimWorldMCP_SymbolDictionary.json
+ SymbolDictionary 每次启动直接读取 Symbols.json 并重建映射，无缓存。
+ 修改 Symbols.json 后重启 RimWorld 即生效。
 """
 
 import os
@@ -207,7 +207,7 @@ def extract_defs() -> dict[str, dict]:
 # ---- 主流程 ----
 
 def main():
-    print(f"扫描 RimWorld: {RIMWORLD_ROOT}")
+    print(f"RimWorld: {RIMWORLD_ROOT}")
 
     # 1. 抽取所有 Def
     defs = extract_defs()
@@ -243,7 +243,7 @@ def main():
             "RimWorldMCP 词表文件 — defName 到显示字符的映射。"
             "由 generate_symbols.py 从游戏 XML 自动生成。"
             "生成后应由 AI 对重要 def 手工润色字符（保持一对一、语义匹配）。"
-            "修改后删除 RimWorldMCP_SymbolDictionary.json 缓存生效。"
+            "修改后重启 RimWorld生效。"
         ),
         "symbols": symbols,
     }
@@ -259,12 +259,12 @@ def main():
         g = info["group"]
         groups[g] = groups.get(g, 0) + 1
 
-    print(f"输出: {OUTPUT_PATH}")
-    print(f"条目: {len(symbols)}（溢出 {overflow}）")
-    print(f"分类: {dict(groups)}")
+    print("输出: " + OUTPUT_PATH)
+    print("条目: " + str(len(symbols)) + "（溢出 " + str(overflow) + "）")
+    print("分类: " + str(dict(groups)))
     print()
-    print("⚠ 下一步: 由 AI 对重要 def 手工润色字符映射，使语义匹配。")
-    print("  修改后删除 RimWorld 持久化目录下的 RimWorldMCP_SymbolDictionary.json。")
+    print("下一步: 由 AI 对重要 def 手工润色字符映射，使语义匹配。")
+    print("  修改后重启 RimWorld 即生效。")
 
 
 if __name__ == "__main__":
