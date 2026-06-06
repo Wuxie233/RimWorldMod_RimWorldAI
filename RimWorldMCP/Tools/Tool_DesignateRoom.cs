@@ -436,10 +436,6 @@ namespace RimWorldMCP.Tools
                 {
                     return ToolResult.Error($"房间建造失败: {ex.Message}");
                 }
-                finally
-                {
-                    Find.DesignatorManager.Deselect();
-                }
             });
         }
         public (int minX, int minZ, int maxX, int maxZ)? GetTargetRange(JsonElement? args)
