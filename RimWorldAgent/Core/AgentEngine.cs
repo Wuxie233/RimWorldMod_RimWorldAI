@@ -49,7 +49,6 @@ namespace RimWorldAgent.Core.AgentRuntime
         private McpClient? _mcp;
         private ContextBuilder? _ctx;
         private bool _initialized;
-        private int _lastDialogCheckTick;
         private int _lastStatusCheckTick;
         private int _pauseStartMs;
         private int _lastPauseRemindMs;
@@ -260,22 +259,6 @@ namespace RimWorldAgent.Core.AgentRuntime
                     _logInfo("[AgentEngine] 游戏尚未就绪，等待...");
                 }
                 catch (Exception ex) { _logInfo($"[AgentEngine] 冷启动检测失败: {ex.Message}"); }
-            }
-
-            // 定时弹框扫描（每 2500 tick ≈ 60s 游戏时间）
-            if (currentTick - _lastDialogCheckTick >= 2500)
-            {
-                _lastDialogCheckTick = currentTick;
-                try
-                {
-                    var dialogsResult = await _mcp.CallTool("get_open_dialogs");
-                    if (!dialogsResult.Contains("没有打开") && !dialogsResult.Contains("没有可交互"))
-                    {
-                        AgentOrchestrator.RequestInterrupt("弹框提示 — 请调用 get_open_dialogs 查看并处理");
-                        _logInfo("[AgentEngine] 检测到弹框，已发送中断");
-                    }
-                }
-                catch (Exception ex) { _logInfo($"[AgentEngine] 弹框检测失败: {ex.Message}"); }
             }
 
             // 定期状态检测（每 120 tick ≈ 2s，仅 Agent 空闲时）

@@ -104,7 +104,7 @@ namespace RimWorldAgent
                     throw new InvalidOperationException("McpClient 不可用，无法获取会话 ID");
 
                 var rawId = await mcp.CallTool("get_session_id");
-                var sessionId = rawId?.Trim();
+                var sessionId = rawId?.Split('\n')[0]?.Trim();  // 首行=纯GUID，后续为ToolRegistry自动追加的[游戏速度]
                 if (string.IsNullOrEmpty(sessionId))
                     throw new InvalidOperationException("get_session_id 返回空，当前可能未加载存档");
 

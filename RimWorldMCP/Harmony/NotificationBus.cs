@@ -136,8 +136,7 @@ namespace RimWorldMCP.Harmony
                 case NotificationType.Message:
                     return dangerLabel switch
                     {
-                        "大威胁" or "小威胁" or "角色死亡" or "健康事件" or "负面" or "游戏减速" or "被困-紧急" => EventLevel.Critical,
-                        "警告" or "被困" => EventLevel.Warning,
+                        "大威胁" or "小威胁" or "角色死亡" or "健康事件" or "负面" or "游戏减速" or "被困-紧急" or "被困" => EventLevel.Critical,
                         "拒绝" or "静默" => EventLevel.Silent,
                         _ => EventLevel.Info  // 事件, 正面, 完成, 状态解除
                     };

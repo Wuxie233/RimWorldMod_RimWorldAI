@@ -27,7 +27,6 @@ namespace RimWorldAgent.Core.AgentRuntime
             Register(new Tool_EnterAct());
             Register(new Tool_GetSkills());
             Register(new Tool_ActiveSkill());
-            Register(new Tool_SetToolResultSuffix());
             Register(new Tool_ReadMemory());
             Register(new Tool_UpdateMemory());
             Register(new Tool_TaskCreate());

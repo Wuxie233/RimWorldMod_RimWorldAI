@@ -124,7 +124,6 @@ dotnet build RimWorldAI.sln
 | `design/mcp-server-integration.md` | MCP Server 集成 |
 | `design/agent-runtime.md` | Agent Runtime |
 | `design/conversation-history.md` | 会话历史持久化（SQLite + WS 协议） |
-| `design/tool-result-suffix.md` | Tool Result Suffix |
 
 ### 提交
 

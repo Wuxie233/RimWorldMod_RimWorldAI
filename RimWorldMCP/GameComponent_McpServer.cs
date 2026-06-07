@@ -96,19 +96,16 @@ namespace RimWorldMCP
         {
             foreach (var info in trapped)
             {
-                bool isCritical = info.TrapType == "Downed" && info.Detail.Contains("无人可达");
-                string dangerLabel = isCritical ? "被困-紧急" : "被困";
-
                 NotificationBus.Enqueue(new Notification
                 {
                     Type = NotificationType.Message,
-                    DangerLabel = dangerLabel,
-                    Label = $"{info.Name} 被困 ({info.TrapType})",
+                    DangerLabel = "被困",
+                    Label = $"{info.Name} 路径阻断",
                     Text = info.Detail,
                     Tick = info.DetectedTick
                 });
 
-                McpLog.Info($"[trapped] {info.Name}: {info.TrapType} @ ({info.PosX},{info.PosZ}) — {info.Detail}");
+                McpLog.Info($"[trapped] {info.Name}: PathBlocked @ ({info.PosX},{info.PosZ}) — {info.Detail}");
             }
         }
     }

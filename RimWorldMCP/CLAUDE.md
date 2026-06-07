@@ -457,10 +457,6 @@ mklink /D F:\SteamLibrary\steamapps\common\RimWorld\Mods\RimWorldMCP F:\RiderPro
 |------|------|------------|
 | `regenerate_map` | 重新生成当前地图（i_know_danger 确认） | `GetOrGenerateMapUtility` (入队) |
 
-### Tool Result Suffix (1)
-| Tool | 说明 | 数据源 |
-|------|------|--------|
-| `set_tool_result_suffix` | 设置工具结果后缀（一次性），下一次工具调用结果末尾追加后自动清空 | `ToolRegistry.ToolResultSuffix` |
 
 ### 可达性检测
 
