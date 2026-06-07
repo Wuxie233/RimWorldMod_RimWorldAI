@@ -77,6 +77,8 @@ namespace RimWorldAgent.Core.Data
             OnRecorded?.Invoke();
         }
 
+        public void AddDuration(long ms) => Interlocked.Add(ref TotalDurationMs, ms);
+
         public void RecordToolResult(bool isError)
         {
             if (isError) Interlocked.Increment(ref TotalToolFailure);

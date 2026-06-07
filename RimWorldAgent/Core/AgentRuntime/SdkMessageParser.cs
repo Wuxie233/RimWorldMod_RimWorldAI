@@ -27,8 +27,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                         break;
                     case SdkResultMessage rm:
                         result.Add(UiMessage.Result(rm.Subtype, rm.StopReason));
-                        // 记录会话耗时
-                        TokenUsageTracker.Record(0, 0, 0, 0, rm.DurationMs ?? 0);
+                        if (rm.DurationMs.HasValue)
+                            TokenUsageTracker.AddDuration(rm.DurationMs.Value);
                         break;
                     case SdkSystemInitMessage init:
                         result.Add(UiMessage.SystemInit(init.Model, init.SessionId,

@@ -9,6 +9,8 @@ namespace RimWorldAgent.Core.Data
         string CurrentModel { get; set; }
 
         void Record(string model, long inputTokens, long outputTokens, long cacheRead, long cacheCreate, long durationMs);
+        /// <summary>仅记录会话耗时，不增加 TotalRequests 和 per-model 计数</summary>
+        void AddDuration(long ms);
         void RecordToolResult(bool isError);
 
         long TotalInputTokens { get; }

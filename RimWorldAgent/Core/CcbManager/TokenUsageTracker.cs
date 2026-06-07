@@ -57,6 +57,10 @@ namespace RimWorldAgent
             Record(CurrentModel, inputTokens, outputTokens, cacheRead, cacheCreate, durationMs);
         }
 
+        /// <summary>仅追加会话耗时，不增加 TotalRequests 和 per-model 计数</summary>
+        public static void AddDuration(long ms)
+            => EnsureDb().AddDuration(ms);
+
         public static void RecordToolResult(bool isError)
             => EnsureDb().RecordToolResult(isError);
 

@@ -63,6 +63,8 @@ namespace RimWorldAgent
             OnRecorded?.Invoke();
         }
 
+        public void AddDuration(long ms) => TotalDurationMs += ms;
+
         public void RecordToolResult(bool isError)
         {
             if (isError) TotalToolFailure++;

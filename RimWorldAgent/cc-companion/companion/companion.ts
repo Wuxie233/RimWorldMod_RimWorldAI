@@ -82,6 +82,9 @@ async function main() {
     Thinking.mode = cfg.mode;
     if (cfg.effort) Thinking.effort = cfg.effort;
     log(`思考模式: ${Thinking.mode}${cfg.effort ? ' effort=' + cfg.effort : ''}`);
+    // abort 旧 session，防止新旧 processor 同时输出导致消息重复
+    abortController.abort();
+    buffering = true;
     startNewSession();
   }
 
