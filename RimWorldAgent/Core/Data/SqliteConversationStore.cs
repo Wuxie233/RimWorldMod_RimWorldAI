@@ -37,26 +37,35 @@ namespace RimWorldAgent.Core.Data
 
         private void InitTable()
         {
-            using var conn = OpenConnection();
-            using var cmd = new SqliteCommand(
-                @"CREATE TABLE IF NOT EXISTS conversation (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    role        TEXT    NOT NULL,
-                    text        TEXT    NOT NULL DEFAULT '',
-                    thinking    TEXT    NOT NULL DEFAULT '',
-                    run_id      TEXT    NOT NULL DEFAULT '',
-                    agent_type  TEXT    NOT NULL DEFAULT '',
-                    tool_name   TEXT    NOT NULL DEFAULT '',
-                    tool_input  TEXT    NOT NULL DEFAULT '',
-                    is_tool_error INTEGER NOT NULL DEFAULT 0,
-                    tool_duration_ms REAL NOT NULL DEFAULT 0,
-                    timestamp   TEXT    NOT NULL,
-                    game_day    INTEGER NOT NULL DEFAULT 0,
-                    save_id     TEXT    NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_save_id ON conversation(save_id);
-                CREATE INDEX IF NOT EXISTS idx_game_day ON conversation(game_day);", conn);
-            cmd.ExecuteNonQuery();
+            try
+            {
+                using var conn = OpenConnection();
+                using var cmd = new SqliteCommand(
+                    @"CREATE TABLE IF NOT EXISTS conversation (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        role        TEXT    NOT NULL,
+                        text        TEXT    NOT NULL DEFAULT '',
+                        thinking    TEXT    NOT NULL DEFAULT '',
+                        run_id      TEXT    NOT NULL DEFAULT '',
+                        agent_type  TEXT    NOT NULL DEFAULT '',
+                        tool_name   TEXT    NOT NULL DEFAULT '',
+                        tool_input  TEXT    NOT NULL DEFAULT '',
+                        is_tool_error INTEGER NOT NULL DEFAULT 0,
+                        tool_duration_ms REAL NOT NULL DEFAULT 0,
+                        timestamp   TEXT    NOT NULL,
+                        game_day    INTEGER NOT NULL DEFAULT 0,
+                        save_id     TEXT    NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_timestamp ON conversation(timestamp);
+                    CREATE INDEX IF NOT EXISTS idx_save_id ON conversation(save_id);
+                    CREATE INDEX IF NOT EXISTS idx_game_day ON conversation(game_day);", conn);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Error($"[SqliteConvStore] 建表失败: {ex.Message}");
+                throw;
+            }
         }
 
         public int Count
