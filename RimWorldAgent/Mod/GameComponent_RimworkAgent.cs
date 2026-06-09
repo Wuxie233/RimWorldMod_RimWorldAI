@@ -70,7 +70,7 @@ namespace RimWorldAgent
                     AgentMcpPort = settings?.AgentMcpPort ?? 9878,
                     CcbPort = 19998,
                     CcbWsUrl = "ws://127.0.0.1:19998",
-                    ModelName = settings?.ModelName,
+                    AiGateway = AiGatewayConfig.FromSettings(settings?.AiProvider, settings?.ApiBaseUrl, settings?.ApiKey, settings?.ModelName),
                     CcbAutoStart = true,
                     CcbAutoInstall = settings?.CcbAutoInstall ?? true,
                     CcbDir = ccbDir,

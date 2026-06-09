@@ -147,7 +147,6 @@ namespace RimWorldAgent
         {
             // 1. 基于 node 路径推导同目录 npm
             var nodeExe = FindNodeExe();
-            var needsUpdate = false;
             if (nodeExe != null)
             {
                 var nodeDir = Path.GetDirectoryName(nodeExe);

@@ -13,19 +13,45 @@ import { writeFileSync, unlinkSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { CONFIG, Thinking, parseArgs } from './config.js';
-import { loadClaudeSdk } from './sdk-loader.js';
-import { createSession, createResponseProcessor } from '../bridge/session.js';
-import type { InboundMessage, ThinkingConfig } from './protocol.js';
+import { CONFIG, Thinking, errorMessage, parseArgs, parseProvider, validateConfig } from './config.js';
+import { SessionManager } from '../agent-runtime/session-manager.js';
+import { redactSensitive } from '../agent-runtime/logging.js';
+import { createAgentProvider } from '../providers/provider-factory.js';
+import type { AgentInboundMessage } from '../providers/types.js';
+import type { ThinkingConfig } from './protocol.js';
 
 parseArgs(process.argv);
+validateConfig();
 
 function log(text: string) {
   console.log(`[bridge] ${text}`);
 }
 
+function debugLog(text: string) {
+  if (CONFIG.debug) log(text);
+}
+
 function sendJson(ws: WebSocket, obj: Record<string, unknown>) {
   if (ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readAuthToken(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  return typeof value.token === 'string' ? value.token : undefined;
+}
+
+function readThinking(value: unknown): ThinkingConfig | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.mode !== 'adaptive' && value.mode !== 'disabled') return undefined;
+  const cfg: ThinkingConfig = { mode: value.mode };
+  if (value.effort === 'low' || value.effort === 'medium' || value.effort === 'high' || value.effort === 'xhigh' || value.effort === 'max') {
+    cfg.effort = value.effort;
+  }
+  return cfg;
 }
 
 let sdkLogPath: string | null = null;
@@ -38,60 +64,74 @@ function sdkLog(dir: '→' | '←', data: string) {
   if (!sdkLogPath) return;
   try {
     const now = new Date().toISOString();
-    appendFileSync(sdkLogPath, `[${now}] ${dir} ${data}\n`, 'utf8');
-  } catch {}
+    appendFileSync(sdkLogPath, `[${now}] ${dir} ${redactSensitive(data)}\n`, 'utf8');
+  } catch (err: unknown) {
+    debugLog(`SDK 日志写入失败: ${errorMessage(err)}`);
+  }
 }
 
 async function main() {
-  log(`启动 PID=${process.pid} port=${CONFIG.port} model=${CONFIG.modelName || 'default'}`);
+  log(`启动 PID=${process.pid} port=${CONFIG.port} provider=${CONFIG.provider} model=${CONFIG.modelName || 'default'}`);
 
-  const sdk = await loadClaudeSdk();
+  const provider = await createAgentProvider();
   let busBroadcast: (data: string) => void;
-
-  // ===== SDK 会话 =====
-  let abortController = new AbortController();
-  let session = createSession(sdk, abortController);
-  let { inputStream, queryIterator } = session;
-  // abort→重建期间的缓冲队列
-  let buffering = false;
-  let pendingMessages: any[] = [];
-  // stream 是否已 abort（防 chat 写入已关闭 stream）
-  let streamAborted = false;
-
-  function startNewSession() {
-    abortController = new AbortController();
-    session = createSession(sdk, abortController);
-    inputStream = session.inputStream;
-    queryIterator = session.queryIterator;
-    streamAborted = false;
-    // 回放缓冲消息到新 stream
-    if (pendingMessages.length > 0) {
-      log(`[CCGUI_DEBUG] 回放缓冲消息 count=${pendingMessages.length}`);
-      for (const m of pendingMessages) inputStream.enqueue(m);
-      pendingMessages = [];
-    }
-    buffering = false;
-    const proc = createResponseProcessor(queryIterator, (msg) => setImmediate(() => busBroadcast(JSON.stringify(msg))));
-    proc.process();
-    log('新会话已创建');
-  }
+  let sessionManager: SessionManager;
 
   function applyThinking(cfg?: ThinkingConfig) {
     if (!cfg?.mode) return;
     if (cfg.mode === Thinking.mode && cfg.effort === Thinking.effort) return;
+    if (!provider.capabilities.supportsThinking) {
+      log(`provider=${provider.kind} 不支持 thinking，已忽略请求 mode=${cfg.mode}`);
+      return;
+    }
     Thinking.mode = cfg.mode;
     if (cfg.effort) Thinking.effort = cfg.effort;
     log(`思考模式: ${Thinking.mode}${cfg.effort ? ' effort=' + cfg.effort : ''}`);
-    // abort 旧 session，防止新旧 processor 同时输出导致消息重复
-    abortController.abort();
-    buffering = true;
-    startNewSession();
+    sessionManager.rebuild('thinking changed');
+  }
+
+  async function handleConfigUpdate(ws: WebSocket, msg: Record<string, unknown>) {
+    const requestId = typeof msg.requestId === 'string' ? msg.requestId : '';
+    const gateway = isRecord(msg.gateway) ? msg.gateway : {};
+    const prev = { provider: CONFIG.provider, apiBaseUrl: CONFIG.apiBaseUrl, apiKey: CONFIG.apiKey, modelName: CONFIG.modelName };
+    try {
+      if (typeof gateway.provider === 'string') CONFIG.provider = parseProvider(gateway.provider);
+      CONFIG.apiBaseUrl = typeof gateway.apiBaseUrl === 'string' ? gateway.apiBaseUrl : '';
+      CONFIG.apiKey = typeof gateway.apiKey === 'string' ? gateway.apiKey : '';
+      CONFIG.modelName = typeof gateway.modelName === 'string' ? gateway.modelName : '';
+      validateConfig();
+      const built = await createAgentProvider();
+      sessionManager.setProvider(built);
+      log(`网关已热切换: provider=${CONFIG.provider} model=${CONFIG.modelName || 'default'}`);
+      sendJson(ws, {
+        type: 'config-update-ack',
+        requestId,
+        ok: true,
+        active: { provider: CONFIG.provider, apiBaseUrl: CONFIG.apiBaseUrl, modelName: CONFIG.modelName, hasApiKey: !!CONFIG.apiKey },
+        history: 'reset',
+        inFlight: 'aborted',
+      });
+    } catch (err: unknown) {
+      CONFIG.provider = prev.provider;
+      CONFIG.apiBaseUrl = prev.apiBaseUrl;
+      CONFIG.apiKey = prev.apiKey;
+      CONFIG.modelName = prev.modelName;
+      log(`网关切换失败: ${errorMessage(err)}`);
+      sendJson(ws, { type: 'config-update-ack', requestId, ok: false, error: { code: 'invalid', message: errorMessage(err) } });
+    }
   }
 
   // ===== WS Server（先于 SDK 启动，避免竞态）=====
   const httpServer = createServer();
   const wss = new WebSocketServer({ server: httpServer });
-  httpServer.listen(CONFIG.port, CONFIG.host);
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    httpServer.once('error', onError);
+    httpServer.listen(CONFIG.port, CONFIG.host, () => {
+      httpServer.off('error', onError);
+      resolve();
+    });
+  });
 
   busBroadcast = (data: string) => {
     sdkLog('←', data);
@@ -100,34 +140,40 @@ async function main() {
     }
   };
 
+  sessionManager = new SessionManager(provider, (msg) => setImmediate(() => busBroadcast(JSON.stringify(msg))), log);
+
   wss.on('connection', (ws: WebSocket) => {
-    log(`[CCGUI_DEBUG] 新 WS 连接, token=${CONFIG.token ? 'required' : 'none'}`);
+    debugLog(`新 WS 连接, token=${CONFIG.token ? 'required' : 'none'}`);
     let authenticated = !CONFIG.token;
 
     ws.on('message', (data: Buffer) => {
-      let raw: any;
+      let raw: unknown;
       try { raw = JSON.parse(data.toString().trim()); }
       catch {
-        log(`[CCGUI_DEBUG] 无效 JSON: ${data.toString().substring(0, 200)}`);
+        debugLog(`无效 JSON: ${data.toString().substring(0, 200)}`);
         return;
       }
-      const msg = raw as any;
-      log(`[CCGUI_DEBUG] 收到消息 type=${msg.type} token=${msg.auth?.token || '(none)'}`);
+      if (!isRecord(raw) || typeof raw.type !== 'string') {
+        debugLog(`无效消息: ${data.toString().substring(0, 200)}`);
+        return;
+      }
+      const msg = raw;
+      debugLog(`收到消息 type=${msg.type} auth=${readAuthToken(msg.auth) ? 'present' : 'none'}`);
 
       // auth
       if (msg.type === 'hello') {
         if (!authenticated) {
-          if (msg.auth?.token === CONFIG.token) {
+          if (readAuthToken(msg.auth) === CONFIG.token) {
             authenticated = true;
           } else {
             sendJson(ws, { type: 'error', error: 'auth failed' });
-            log(`[CCGUI_DEBUG] auth 失败: msg.token='${msg.auth?.token}' config.token='${CONFIG.token}'`);
+            log('auth 失败');
             ws.close();
             return;
           }
         }
         sendJson(ws, { type: 'hello-ok' });
-        log(`[CCGUI_DEBUG] hello-ok 已发送${!CONFIG.token ? ' (无认证)' : ''}`);
+        debugLog(`hello-ok 已发送${!CONFIG.token ? ' (无认证)' : ''}`);
         return;
       }
       if (!authenticated) return;
@@ -135,40 +181,33 @@ async function main() {
       // dispatch
       switch (msg.type) {
         case 'chat': {
-          applyThinking(msg.thinking);
-          log(`[CCGUI_DEBUG] chat session=${msg.session} len=${msg.text.length} buffering=${buffering} streamAborted=${streamAborted}`);
-          const userMsg = { type: 'user', message: { role: 'user', content: msg.text } };
+          if (typeof msg.text !== 'string') return;
+          applyThinking(readThinking(msg.thinking));
+          const sessionName = typeof msg.session === 'string' ? msg.session : '';
+          debugLog(`chat session=${sessionName} len=${msg.text.length}`);
+          const userMsg: AgentInboundMessage = { type: 'user', message: { role: 'user', content: msg.text } };
           sdkLog('→', JSON.stringify(userMsg));
-          if (buffering) {
-            log(`[CCGUI_DEBUG] chat 缓冲中...`);
-            pendingMessages.push(userMsg);
-          } else {
-            inputStream.enqueue(userMsg);
-          }
+          sessionManager.enqueue(userMsg);
           break;
         }
         case 'abort':
-          log('[CCGUI_DEBUG] 收到 abort, buffering=true');
-          buffering = true;
-          streamAborted = true;  // 旧 stream 不可写
-          abortController.abort();
-          log('[CCGUI_DEBUG] abortController.abort() done, startNewSession...');
-          startNewSession();
+          debugLog('收到 abort');
+          sessionManager.abort('ws abort');
+          break;
+        case 'config-update':
+          void handleConfigUpdate(ws, msg);
           break;
       }
     });
   });
-
-  // WS server 就绪后启动 SDK 消息处理
-  const proc = createResponseProcessor(queryIterator, (msg) => setImmediate(() => busBroadcast(JSON.stringify(msg))));
-  proc.process().catch((err: any) => log(`SDK 处理异常: ${err.message}`));
 
   // ===== PID 文件 + 清理 =====
   const pidFile = join(process.cwd(), '.pid');
   writeFileSync(pidFile, String(process.pid));
 
   function shutdown() {
-    try { unlinkSync(pidFile); } catch {}
+    try { unlinkSync(pidFile); }
+    catch (err: unknown) { debugLog(`PID 文件清理失败: ${errorMessage(err)}`); }
     process.exit(0);
   }
   process.on('SIGINT', shutdown);
@@ -177,7 +216,7 @@ async function main() {
   log(`就绪 ws://${CONFIG.host}:${CONFIG.port}`);
 }
 
-main().catch((err: any) => {
-  console.error(`[bridge] 致命错误: ${err.message}`);
+main().catch((err: unknown) => {
+  console.error(`[bridge] 致命错误: ${errorMessage(err)}`);
   process.exit(1);
 });

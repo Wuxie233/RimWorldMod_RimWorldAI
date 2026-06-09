@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <RimWorldRefRoot Condition="'$(RimWorldRefRoot)' == '' and Exists('/flyshop/opencode/runtime/rimworld-ref/Managed/Assembly-CSharp.dll')">/flyshop/opencode/runtime/rimworld-ref</RimWorldRefRoot>
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == '' and '$(RimWorldRefRoot)' != ''">$(RimWorldRefRoot)/Managed/</RimWorldManagedDir>
+    <RimWorldHarmonyDir Condition="'$(RimWorldHarmonyDir)' == '' and '$(RimWorldRefRoot)' != ''">$(RimWorldRefRoot)/Harmony/</RimWorldHarmonyDir>
+    <RimWorldManagedDir Condition="'$(RimWorldManagedDir)' == ''">F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\</RimWorldManagedDir>
+    <RimWorldHarmonyDir Condition="'$(RimWorldHarmonyDir)' == ''">F:\SteamLibrary\steamapps\workshop\content\294100\2009463077\Current\Assemblies\</RimWorldHarmonyDir>
+  </PropertyGroup>
+</Project>

@@ -19,29 +19,29 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="2.1.0" />
     <Reference Include="Assembly-CSharp">
-      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)Assembly-CSharp.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)UnityEngine.IMGUIModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <HintPath>$(RimWorldManagedDir)UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.Net.Http" />
     <PackageReference Include="Fleck" Version="0.13.0.48" />
     <Reference Include="0Harmony">
-      <HintPath>F:\SteamLibrary\steamapps\workshop\content\294100\2009463077\Current\Assemblies\0Harmony.dll</HintPath>
+      <HintPath>$(RimWorldHarmonyDir)0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System.ValueTuple" HintPath="$(MSBuildProjectDirectory)\..\RimWorldMCP\System.ValueTuple.dll">
@@ -108,9 +108,13 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)\README.md" DestinationFolder="..\publish\RimWorldAgent" Condition="Exists('$(MSBuildProjectDirectory)\README.md')" />
     <!-- cc-companion → bin + publish (与 DLL 同级) -->
     <MakeDir Directories="$(OutputPath)cc-companion" />
-    <Exec Command="xcopy /S /Y /I /EXCLUDE:$(MSBuildProjectDirectory)\cc-companion\.copyignore &quot;$(MSBuildProjectDirectory)\cc-companion\*&quot; &quot;$(OutputPath)cc-companion\&quot;" Condition="Exists('$(MSBuildProjectDirectory)\cc-companion')" IgnoreExitCode="true" />
     <MakeDir Directories="..\publish\RimWorldAgent\1.6\Assemblies\cc-companion;..\publish\RimWorldAgent\1.6\Assemblies\Skills" />
-    <Exec Command="xcopy /S /Y /I /EXCLUDE:$(MSBuildProjectDirectory)\cc-companion\.copyignore &quot;$(MSBuildProjectDirectory)\cc-companion\*&quot; &quot;..\publish\RimWorldAgent\1.6\Assemblies\cc-companion\&quot;" Condition="Exists('$(MSBuildProjectDirectory)\cc-companion')" IgnoreExitCode="true" />
+    <ItemGroup>
+      <CompanionFiles Include="$(MSBuildProjectDirectory)\cc-companion\**\*"
+                      Exclude="$(MSBuildProjectDirectory)\cc-companion\node_modules\**\*;$(MSBuildProjectDirectory)\cc-companion\.git\**\*;$(MSBuildProjectDirectory)\cc-companion\.pid" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CompanionFiles)" DestinationFiles="@(CompanionFiles->'$(OutputPath)cc-companion\%(RecursiveDir)%(Filename)%(Extension)')" Condition="Exists('$(MSBuildProjectDirectory)\cc-companion')" />
+    <Copy SourceFiles="@(CompanionFiles)" DestinationFiles="@(CompanionFiles->'..\publish\RimWorldAgent\1.6\Assemblies\cc-companion\%(RecursiveDir)%(Filename)%(Extension)')" Condition="Exists('$(MSBuildProjectDirectory)\cc-companion')" />
     <Copy SourceFiles="@(SkillMdFiles)" DestinationFolder="..\publish\RimWorldAgent\1.6\Assemblies\Skills" />
   </Target>
 

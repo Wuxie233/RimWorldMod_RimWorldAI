@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using RimWorldAgent.Core;
 using RimWorldAgent.Core.AgentRuntime;
-using RimWorldAgent.Core.CcbManager;
 using RimWorldAgent.Core.Data;
 using RimWorldAgent.Core.Mcp;
 
@@ -21,6 +20,9 @@ namespace RimWorldAgent
 
             var mcpUrl = "http://10.126.126.1:9877/";
             var modelName = "";
+            var aiProvider = "claude-sdk";
+            var apiBaseUrl = "";
+            var apiKey = "";
             var planSpeed = "paused";
             for (int i = 0; i < args.Length; i++)
             {
@@ -31,6 +33,18 @@ namespace RimWorldAgent
                     modelName = arg.Substring("--model=".Length);
                 else if (arg.StartsWith("-m="))
                     modelName = arg.Substring("-m=".Length);
+                else if (arg == "--provider" && i + 1 < args.Length)
+                    aiProvider = args[++i];
+                else if (arg.StartsWith("--provider="))
+                    aiProvider = arg.Substring("--provider=".Length);
+                else if (arg == "--api-base-url" && i + 1 < args.Length)
+                    apiBaseUrl = args[++i];
+                else if (arg.StartsWith("--api-base-url="))
+                    apiBaseUrl = arg.Substring("--api-base-url=".Length);
+                else if (arg == "--api-key" && i + 1 < args.Length)
+                    apiKey = args[++i];
+                else if (arg.StartsWith("--api-key="))
+                    apiKey = arg.Substring("--api-key=".Length);
                 else if (arg == "--plan-speed" && i + 1 < args.Length)
                     planSpeed = args[++i];
                 else if (arg.StartsWith("--plan-speed="))
@@ -46,6 +60,8 @@ namespace RimWorldAgent
                 else if (!arg.StartsWith("-"))
                     mcpUrl = arg;
             }
+            Console.WriteLine($"  AI 网关: {aiProvider}");
+            if (!string.IsNullOrEmpty(apiBaseUrl)) Console.WriteLine($"  API 地址: {apiBaseUrl}");
             if (!string.IsNullOrEmpty(modelName)) Console.WriteLine($"  模型: {modelName}");
             if (planSpeed != "paused") Console.WriteLine($"  Plan 速度: {planSpeed}");
 
@@ -63,7 +79,7 @@ namespace RimWorldAgent
             {
                 ProjectPath = projectPath,
                 McpUrl = mcpUrl,
-                ModelName = modelName,
+                AiGateway = AiGatewayConfig.FromSettings(aiProvider, apiBaseUrl, apiKey, modelName),
                 PlanSpeed = planSpeed,
                 CcbDir = ccbDir ?? "",
                 WaitForGame = true,

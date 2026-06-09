@@ -30,7 +30,7 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
             var section = args?.TryGetProperty("section", out var s) == true ? s.GetString() : null;
             if (!string.IsNullOrEmpty(section))
             {
-                var sectionContent = ExtractSection(content, section);
+                var sectionContent = ExtractSection(content, section!);
                 content = sectionContent ?? $"未找到章节 '{section}'。";
             }
 

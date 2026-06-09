@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Verse;
 
 namespace RimWorldAgent
@@ -6,6 +7,13 @@ namespace RimWorldAgent
     {
         // 模型
         public string ModelName = "";
+        public string AiProvider = "claude-sdk";
+        public string ApiBaseUrl = "";
+        public string ApiKey = "";
+        public List<string> CachedModelIds = new List<string>();
+        public string CachedModelProvider = "";
+        public string CachedModelBaseUrl = "";
+        public string CachedModelFetchedAt = "";
 
         // 思考
         public string ThinkingMode = "adaptive";
@@ -41,6 +49,13 @@ namespace RimWorldAgent
         {
             base.ExposeData();
             Scribe_Values.Look(ref ModelName, "modelName", "");
+            Scribe_Values.Look(ref AiProvider, "aiProvider", "claude-sdk");
+            Scribe_Values.Look(ref ApiBaseUrl, "apiBaseUrl", "");
+            Scribe_Values.Look(ref ApiKey, "apiKey", "");
+            Scribe_Collections.Look(ref CachedModelIds, "cachedModelIds", LookMode.Value);
+            Scribe_Values.Look(ref CachedModelProvider, "cachedModelProvider", "");
+            Scribe_Values.Look(ref CachedModelBaseUrl, "cachedModelBaseUrl", "");
+            Scribe_Values.Look(ref CachedModelFetchedAt, "cachedModelFetchedAt", "");
             Scribe_Values.Look(ref ThinkingMode, "thinkingMode", "adaptive");
             Scribe_Values.Look(ref ThinkingEffort, "thinkingEffort", "high");
             Scribe_Values.Look(ref TokenBudgetLimit, "tokenBudgetLimit", 0L);
@@ -57,6 +72,7 @@ namespace RimWorldAgent
             Scribe_Values.Look(ref BridgePort, "bridgePort", 19999);
             Scribe_Values.Look(ref LogSdkMessages, "logSdkMessages", false);
             Scribe_Values.Look(ref LogCcbWsMessages, "logCcbWsMessages", false);
+            if (CachedModelIds == null) CachedModelIds = new List<string>();
         }
     }
 }

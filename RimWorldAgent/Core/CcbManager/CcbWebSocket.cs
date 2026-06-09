@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
 using System.Text;
@@ -34,6 +33,7 @@ public class CcbWebSocket : IDisposable
     private const int MaxReconnectDelayMs = 60000;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private TaskCompletionSource<(bool ok, string message)>? _configAck;
 
     /// <summary>WS 通信日志文件路径，设为 null 禁用</summary>
     public static string? WsLogFilePath { get; set; }
@@ -151,6 +151,26 @@ public class CcbWebSocket : IDisposable
         CoreLog.Info("[CcbWS] 已发送中断请求");
     }
 
+    /// <summary>运行时热切换 AI 网关；等待 companion 的 config-update-ack。</summary>
+    public async Task<(bool ok, string message)> SendConfigUpdateAsync(string provider, string apiBaseUrl, string apiKey, string modelName, int timeoutMs = 10000)
+    {
+        var requestId = Guid.NewGuid().ToString("N");
+        var tcs = new TaskCompletionSource<(bool ok, string message)>();
+        _configAck = tcs;
+        await SendJson(new
+        {
+            type = "config-update",
+            requestId,
+            gateway = new { provider, apiBaseUrl, apiKey, modelName },
+            historyPolicy = "auto"
+        });
+        CoreLog.Info($"[CcbWS] 已发送网关切换请求 provider={provider}");
+        var done = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
+        if (done == tcs.Task) return tcs.Task.Result;
+        _configAck = null;
+        return (false, "网关切换超时：未收到 companion 确认");
+    }
+
     // ========== 内部 ==========
 
     private async Task SendHello()
@@ -189,10 +209,62 @@ public class CcbWebSocket : IDisposable
         if (path == null) return;
         try
         {
-            var line = $"[{DateTime.UtcNow:O}] {dir} {json}\n";
+            var line = $"[{DateTime.UtcNow:O}] {dir} {Redact(json)}\n";
             File.AppendAllText(path, line, Encoding.UTF8);
         }
-        catch {}
+        catch (Exception ex) { CoreLog.Info($"[CcbWS] WS 日志写入失败: {ex.Message}"); }
+    }
+
+    private static string Redact(string json)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(
+            json,
+            "(\"(?:apiKey|api_key|apikey|token)\"\\s*:\\s*\")[^\"]*(\")",
+            "$1***$2",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    private bool TryHandleConfigAck(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var t) || t.GetString() != "config-update-ack")
+                return false;
+
+            var ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == JsonValueKind.True;
+            string message;
+            if (ok)
+            {
+                var prov = "";
+                var model = "";
+                if (root.TryGetProperty("active", out var active) && active.ValueKind == JsonValueKind.Object)
+                {
+                    if (active.TryGetProperty("provider", out var p)) prov = p.GetString() ?? "";
+                    if (active.TryGetProperty("modelName", out var m)) model = m.GetString() ?? "";
+                }
+                var hist = root.TryGetProperty("history", out var h) ? h.GetString() : "";
+                message = $"已切换网关: {prov} {model} (历史:{hist})";
+            }
+            else
+            {
+                var err = "未知错误";
+                if (root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.Object
+                    && e.TryGetProperty("message", out var em))
+                    err = em.GetString() ?? err;
+                message = $"网关切换失败: {err}";
+            }
+            CoreLog.Info($"[CcbWS] {message}");
+            _configAck?.TrySetResult((ok, message));
+            _configAck = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn($"[CcbWS] 解析 config-update-ack 失败: {ex.Message}");
+            return false;
+        }
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -227,6 +299,8 @@ public class CcbWebSocket : IDisposable
     private void ProcessMessage(string json)
     {
         WsLog("←", json);
+        if (json.IndexOf("config-update-ack", StringComparison.Ordinal) >= 0 && TryHandleConfigAck(json))
+            return;
         try
         {
             var msg = SdkMessage.FromJson(json);

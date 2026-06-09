@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using RimWorldAgent.Core.CcbManager;
 
@@ -166,7 +165,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             catch (Exception ex) { CoreLog.Info($"[ToolDispatcher] 工具追踪异常 ({toolName}): {ex.Message}"); }
         }
 
-        public static async Task HandleAsync(
+        public static Task HandleAsync(
             CcbWebSocket ccbWs,
             string toolId, string toolName, string input)
         {
@@ -174,6 +173,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 _notifReceivedCount = 0;
 
             TrackToolUse(toolName, input);
+            return Task.CompletedTask;
         }
 
         /// <summary>添加通知 suffix（本地操作，无 MCP 往返）</summary>

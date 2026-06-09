@@ -1,4 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using RimWorldAgent.Core;
+using RimWorldAgent.Core.AgentRuntime;
 using RimWorldAgent.Core.CcbManager;
 using UnityEngine;
 using Verse;
@@ -10,6 +15,13 @@ namespace RimWorldAgent
         public static RimWorldAgentMod Instance { get; private set; } = null!;
         public AgentModSettings Settings { get; private set; }
         private Vector2 _scrollPos;
+        private Task<AiModelCatalogResult>? _modelFetchTask;
+        private string _modelFetchProvider = "";
+        private string _modelFetchBaseUrl = "";
+        private string _modelFetchStatus = "";
+        private bool _modelFetchFailed;
+        private string _gatewayApplyStatus = "";
+        private bool _gatewayApplyFailed;
 
         public RimWorldAgentMod(ModContentPack content) : base(content)
         {
@@ -35,7 +47,9 @@ namespace RimWorldAgent
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
-            var h = 980f;
+            ApplyCompletedModelFetch();
+
+            var h = 1280f;
             Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, h);
             Widgets.BeginScrollView(inRect, ref _scrollPos, viewRect);
             var listing = new Listing_Standard();
@@ -44,7 +58,7 @@ namespace RimWorldAgent
             if (Find.CurrentMap != null)
             {
                 GUI.color = Color.yellow;
-                listing.Label("设置仅在主菜单生效，游戏内仅可查看。");
+                listing.Label("端口/目录等需重载存档生效；AI 网关可用下方按钮游戏内热切换。");
                 GUI.color = Color.white;
                 listing.Gap(8f);
             }
@@ -68,8 +82,36 @@ namespace RimWorldAgent
             // ==================== 模型与思考 ====================
             DrawSectionHeader(listing, "模型与思考");
 
-            listing.Label("模型名称 (如 claude-sonnet-4-6)");
+            var providerLabels = new[] { "claude-sdk (Claude Agent SDK)", "anthropic (Anthropic API)", "openai-compatible (自定义 /v1)", "openai (OpenAI 官方)" };
+            var providerValues = new[] { "claude-sdk", "anthropic", "openai-compatible", "openai" };
+            var providerIdx = Array.IndexOf(providerValues, Settings.AiProvider);
+            if (providerIdx < 0) providerIdx = 0;
+            if (listing.ButtonText($"AI 网关: {providerLabels[providerIdx]}"))
+            {
+                providerIdx = (providerIdx + 1) % providerValues.Length;
+                Settings.AiProvider = providerValues[providerIdx];
+            }
+
+            listing.Label("API 地址 (留空使用 provider 默认)");
+            Settings.ApiBaseUrl = listing.TextEntry(Settings.ApiBaseUrl);
+
+            listing.Label("API Key (本机明文保存)");
+            Settings.ApiKey = listing.TextEntry(Settings.ApiKey);
+            if (!string.IsNullOrEmpty(Settings.ApiKey) && listing.ButtonText("清空 API Key"))
+                Settings.ApiKey = "";
+
+            listing.Label("模型名称 (如 claude-sonnet-4-6 / gpt-4o-mini)");
             Settings.ModelName = listing.TextEntry(Settings.ModelName);
+            DrawModelCatalogControls(listing);
+
+            if (listing.ButtonText("应用 AI 网关设置（运行时热切换）"))
+                ApplyGatewayHotSwap();
+            if (!string.IsNullOrEmpty(_gatewayApplyStatus))
+            {
+                GUI.color = _gatewayApplyFailed ? new Color(1f, 0.45f, 0.4f, 1f) : new Color(0.6f, 0.75f, 0.6f, 1f);
+                listing.Label(_gatewayApplyStatus);
+                GUI.color = Color.white;
+            }
 
             var modeLabels = new[] { "adaptive (引导深度)", "disabled (禁用思考)" };
             var modeValues = new[] { "adaptive", "disabled" };
@@ -191,6 +233,155 @@ namespace RimWorldAgent
 
             listing.End();
             Widgets.EndScrollView();
+        }
+
+        private void DrawModelCatalogControls(Listing_Standard listing)
+        {
+            var fetching = _modelFetchTask != null && !_modelFetchTask.IsCompleted;
+            var cachedCount = Settings.CachedModelIds?.Count ?? 0;
+
+            if (fetching)
+            {
+                GUI.color = new Color(0.65f, 0.75f, 1f, 1f);
+                listing.Label("正在获取模型列表...");
+                GUI.color = Color.white;
+            }
+            else if (listing.ButtonText(cachedCount > 0 ? "刷新模型列表" : "获取模型列表"))
+            {
+                StartModelFetch();
+            }
+
+            if (cachedCount > 0)
+            {
+                var cacheCurrent = IsModelCacheCurrent();
+                GUI.color = cacheCurrent ? new Color(0.6f, 0.75f, 0.65f, 1f) : new Color(0.9f, 0.72f, 0.42f, 1f);
+                var source = string.IsNullOrEmpty(Settings.CachedModelFetchedAt) ? "未知时间" : Settings.CachedModelFetchedAt;
+                listing.Label(cacheCurrent
+                    ? $"已缓存 {cachedCount} 个模型（{source}）"
+                    : $"已缓存 {cachedCount} 个模型，但 provider/API 地址已变化，建议刷新。");
+                GUI.color = Color.white;
+
+                if (listing.ButtonText($"选择模型 ({cachedCount})"))
+                    ShowModelSelectMenu();
+            }
+
+            if (!string.IsNullOrEmpty(_modelFetchStatus))
+            {
+                GUI.color = _modelFetchFailed ? new Color(1f, 0.45f, 0.4f, 1f) : new Color(0.6f, 0.65f, 0.75f, 1f);
+                listing.Label(_modelFetchStatus);
+                GUI.color = Color.white;
+            }
+
+            listing.Gap(4f);
+        }
+
+        private void StartModelFetch()
+        {
+            if (_modelFetchTask != null && !_modelFetchTask.IsCompleted) return;
+
+            var provider = Settings.AiProvider;
+            var baseUrl = Settings.ApiBaseUrl;
+            var apiKey = Settings.ApiKey;
+
+            _modelFetchProvider = provider;
+            _modelFetchBaseUrl = baseUrl;
+            _modelFetchFailed = false;
+            _modelFetchStatus = "正在通过 API 地址读取 /models...";
+            _modelFetchTask = Task.Run(() => AiModelCatalog.FetchAsync(provider, baseUrl, apiKey));
+        }
+
+        private void ApplyCompletedModelFetch()
+        {
+            var task = _modelFetchTask;
+            if (task == null || !task.IsCompleted) return;
+
+            _modelFetchTask = null;
+            if (task.IsCanceled)
+            {
+                _modelFetchFailed = true;
+                _modelFetchStatus = "获取模型列表已取消。";
+                return;
+            }
+
+            if (task.IsFaulted)
+            {
+                _modelFetchFailed = true;
+                _modelFetchStatus = task.Exception?.GetBaseException().Message ?? "获取模型列表失败。";
+                return;
+            }
+
+            var result = task.Result;
+            Settings.CachedModelIds = result.ModelIds.ToList();
+            Settings.CachedModelProvider = _modelFetchProvider;
+            Settings.CachedModelBaseUrl = _modelFetchBaseUrl;
+            Settings.CachedModelFetchedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+            _modelFetchFailed = false;
+            _modelFetchStatus = $"已从 {result.Endpoint} 获取 {Settings.CachedModelIds.Count} 个模型。";
+            if (string.IsNullOrWhiteSpace(Settings.ModelName) && Settings.CachedModelIds.Count == 1)
+                Settings.ModelName = Settings.CachedModelIds[0];
+            WriteSettings();
+        }
+
+        private void ShowModelSelectMenu()
+        {
+            var models = Settings.CachedModelIds ?? new List<string>();
+            if (models.Count == 0) return;
+
+            var options = new List<FloatMenuOption>();
+            foreach (var model in models)
+            {
+                var modelId = model;
+                var label = string.Equals(modelId, Settings.ModelName, StringComparison.Ordinal)
+                    ? $"[当前] {modelId}"
+                    : modelId;
+                options.Add(new FloatMenuOption(label, () => SelectModel(modelId)));
+            }
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void SelectModel(string modelId)
+        {
+            Settings.ModelName = modelId;
+            _modelFetchFailed = false;
+            _modelFetchStatus = $"已选择模型: {modelId}";
+            WriteSettings();
+        }
+
+        private async void ApplyGatewayHotSwap()
+        {
+            WriteSettings();
+            var engine = AgentEngine.Current;
+            if (engine == null)
+            {
+                _gatewayApplyFailed = false;
+                _gatewayApplyStatus = "Agent 未运行：设置已保存，加载存档后生效。";
+                return;
+            }
+            _gatewayApplyFailed = false;
+            _gatewayApplyStatus = "正在应用网关设置...";
+            try
+            {
+                var cfg = AiGatewayConfig.FromSettings(Settings.AiProvider, Settings.ApiBaseUrl, Settings.ApiKey, Settings.ModelName);
+                var (ok, message) = await engine.ApplyAiGatewayAsync(cfg);
+                _gatewayApplyFailed = !ok;
+                _gatewayApplyStatus = message;
+            }
+            catch (Exception ex)
+            {
+                _gatewayApplyFailed = true;
+                _gatewayApplyStatus = $"应用失败: {ex.Message}";
+            }
+        }
+
+        private bool IsModelCacheCurrent()
+        {
+            var provider = Settings.AiProvider;
+            return string.Equals(Settings.CachedModelProvider, provider, StringComparison.Ordinal)
+                && string.Equals(
+                    AiGatewayUrl.NormalizeRootSafe(provider, Settings.CachedModelBaseUrl),
+                    AiGatewayUrl.NormalizeRootSafe(provider, Settings.ApiBaseUrl),
+                    StringComparison.OrdinalIgnoreCase);
         }
     }
 }

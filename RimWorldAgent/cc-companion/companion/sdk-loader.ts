@@ -5,6 +5,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
+import { errorMessage } from './config.js';
+import type { ClaudeAgentSdkModule } from '../bridge/session.js';
 
 const SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 
@@ -24,7 +26,9 @@ function resolveEntryFile(packageDir: string): string | null {
       if (!candidate) {
         candidate = pkg.module ?? pkg.main;
       }
-    } catch {}
+    } catch (err: unknown) {
+      console.warn(`[cc-companion] 读取 SDK package.json 失败: ${errorMessage(err)}`);
+    }
   }
 
   if (candidate) return join(packageDir, candidate);
@@ -36,7 +40,7 @@ function resolveEntryFile(packageDir: string): string | null {
   return null;
 }
 
-export async function loadClaudeSdk(): Promise<any> {
+export async function loadClaudeSdk(): Promise<ClaudeAgentSdkModule> {
   const pkgDir = join(process.cwd(), 'node_modules', SDK_PACKAGE);
 
   if (!existsSync(pkgDir)) {
@@ -52,12 +56,16 @@ export async function loadClaudeSdk(): Promise<any> {
   }
 
   console.log(`[cc-companion] 加载 SDK: ${entry}`);
-  const sdk = await import(pathToFileURL(entry).href);
+  const sdk: unknown = await import(pathToFileURL(entry).href);
 
-  if (typeof sdk.query !== 'function') {
+  if (!hasQuery(sdk)) {
     throw new Error('SDK 缺少 query 函数');
   }
 
   console.log(`[cc-companion] SDK 已加载`);
   return sdk;
+}
+
+function hasQuery(value: unknown): value is ClaudeAgentSdkModule {
+  return value !== null && typeof value === 'object' && 'query' in value && typeof value.query === 'function';
 }

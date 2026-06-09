@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Ccb = RimWorldAgent.Core.CcbManager.CcbManager;
 using RimWorldAgent.Core.CcbManager;
 using RimWorldAgent.Core.Data;
 using RimWorldAgent.Core.Mcp;
-using RimWorldAgent.Core.models;
 
 namespace RimWorldAgent.Core.AgentRuntime
 {
@@ -22,7 +19,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         public int CcbPort { get; set; } = 19998;
         public string CcbWsUrl { get; set; } = "ws://127.0.0.1:19998";
         public string? CcbToken { get; set; }
-        public string? ModelName { get; set; }
+        public AiGatewayConfig AiGateway { get; set; } = AiGatewayConfig.FromSettings(null, null, null, null);
         public bool CcbAutoStart { get; set; } = true;
         public bool CcbAutoInstall { get; set; } = true;
         public string CcbDir { get; set; } = "";
@@ -58,6 +55,8 @@ namespace RimWorldAgent.Core.AgentRuntime
         public McpClient? McpClient => _mcp;
         public bool IsReady => _initialized && _mcp != null;
 
+        public static AgentEngine? Current { get; private set; }
+
         public AgentEngine(AgentEngineConfig cfg, IDbStore dbStore, IGameStateProvider gameState,
             Action<string>? logInfo = null, Action<string>? logError = null, Action<string>? logDebug = null, Action<string>? logWarn = null)
         {
@@ -75,15 +74,17 @@ namespace RimWorldAgent.Core.AgentRuntime
         {
             if (_initialized) return true;
             _initialized = true;
-
-            CoreLog.OnInfo = _logInfo;
-            CoreLog.OnError = _logError;
-            CoreLog.OnDebug = _logDebug;
-            CoreLog.OnWarn = _logWarn;
+            Current = this;
 
             // Session 目录
             Directory.CreateDirectory(_cfg.ProjectPath);
             SessionStore.ProjectPath = _cfg.ProjectPath;
+            DiagnosticsLog.Init(_cfg.ProjectPath);
+
+            CoreLog.OnInfo = _logInfo;
+            CoreLog.OnError = msg => { _logError(msg); DiagnosticsLog.Log("error", msg); };
+            CoreLog.OnDebug = _logDebug;
+            CoreLog.OnWarn = msg => { _logWarn(msg); DiagnosticsLog.Log("warn", msg); };
 
             // Data 层 — 注入 IDbStore
             TokenUsageTracker.Db = _dbStore;
@@ -139,7 +140,7 @@ namespace RimWorldAgent.Core.AgentRuntime
 
                 _ccb = new Ccb(_cfg.CcbDir, _cfg.ProjectPath, _cfg.CcbPort,
                     mcpPort: _cfg.McpPort, agentMcpPort: _cfg.AgentMcpPort,
-                    ccbToken: _cfg.CcbToken, modelName: _cfg.ModelName,
+                    ccbToken: _cfg.CcbToken, aiGateway: _cfg.AiGateway,
                     budgetLimit: _cfg.TokenBudgetLimit, budgetAction: "Block",
                     logSdk: _cfg.LogSdkMessages);
                 if (_cfg.CcbAutoStart)
@@ -326,14 +327,32 @@ namespace RimWorldAgent.Core.AgentRuntime
             _logInfo($"[AgentEngine] 唤醒 commander (Day={_gameState.GameDay}, Plan={isPlan}, Interrupted={isInterrupted})");
 
             var prompt = await _ctx!.BuildAsync(isInterrupted: isInterrupted);
-            await AgentLoop.RunSessionAsync(prompt, _mcp!, _ccbWs);
+            var ccbWs = _ccbWs;
+            if (ccbWs == null)
+            {
+                _logWarn("[AgentEngine] CCB WS 未就绪，跳过本轮 commander 会话");
+                AgentOrchestrator.EndSession();
+                return;
+            }
+            await AgentLoop.RunSessionAsync(prompt, _mcp!, ccbWs);
 
             AgentOrchestrator.EndSession();
             _logInfo("[AgentEngine] commander 休眠");
         }
 
+        public async Task<(bool ok, string message)> ApplyAiGatewayAsync(AiGatewayConfig gateway)
+        {
+            _cfg.AiGateway = gateway;
+            _ccb?.UpdateAiGateway(gateway);
+            var ws = _ccbWs;
+            if (ws == null || !ws.IsReady)
+                return (false, "companion 未就绪：设置已保存，将在下次启动生效");
+            return await ws.SendConfigUpdateAsync(gateway.Provider, gateway.ApiBaseUrl, gateway.ApiKey, gateway.ModelName);
+        }
+
         public void Dispose()
         {
+            if (Current == this) Current = null;
             _ccbWs?.Dispose();
             _ccbWs = null;
             _ccb?.Dispose();

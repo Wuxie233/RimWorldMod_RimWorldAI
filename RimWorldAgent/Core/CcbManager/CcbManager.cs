@@ -19,7 +19,7 @@ namespace RimWorldAgent.Core.CcbManager
         private readonly string? _ccbToken;
         private readonly int _mcpPort;
         private readonly int _agentMcpPort;
-        private readonly string? _modelName;
+        private AiGatewayConfig _aiGateway;
         private readonly long _budgetLimit;
         private readonly string _budgetAction;
         private readonly bool _logSdk;
@@ -33,7 +33,7 @@ namespace RimWorldAgent.Core.CcbManager
         /// <summary>TickAndRestart 重启了 companion 进程时为 true，调用方检查后应清除</summary>
         public bool WasRestarted { get; set; }
 
-        public CcbManager(string companionDir, string projectPath, int ccbPort = 19998, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, string? modelName = null, long budgetLimit = 0, string budgetAction = "Block", bool logSdk = false)
+        public CcbManager(string companionDir, string projectPath, int ccbPort = 19998, int mcpPort = 9877, int agentMcpPort = 9878, string? nodeExe = null, string? ccbToken = null, AiGatewayConfig? aiGateway = null, long budgetLimit = 0, string budgetAction = "Block", bool logSdk = false)
         {
             _companionDir = companionDir;
             _projectPath = projectPath;
@@ -41,11 +41,16 @@ namespace RimWorldAgent.Core.CcbManager
             _mcpPort = mcpPort;
             _agentMcpPort = agentMcpPort;
             _ccbToken = ccbToken;
-            _modelName = modelName;
+            _aiGateway = aiGateway ?? AiGatewayConfig.FromSettings(null, null, null, null);
             _budgetLimit = budgetLimit;
             _budgetAction = budgetAction;
             _logSdk = logSdk;
             _nodeExe = nodeExe ?? CompanionInstaller.FindNodeExe();
+        }
+
+        public void UpdateAiGateway(AiGatewayConfig gateway)
+        {
+            if (gateway != null) _aiGateway = gateway;
         }
 
         public bool Start()
@@ -88,8 +93,8 @@ namespace RimWorldAgent.Core.CcbManager
             var args = $"--import tsx/esm companion/companion.ts"
                 + $" --idle-timeout 30000"
                 + $" --project-path \"{_projectPath}\"";
-            if (!string.IsNullOrEmpty(_modelName))
-                args += $" --model-name \"{_modelName}\"";
+            if (!string.IsNullOrEmpty(_aiGateway.ModelName))
+                args += $" --model-name \"{_aiGateway.ModelName}\"";
             if (_logSdk)
                 args += " --log-sdk";
 
@@ -108,8 +113,14 @@ namespace RimWorldAgent.Core.CcbManager
                 psi.Environment["CCB_HOST"] = "0.0.0.0";
                 psi.Environment["CCB_PORT"] = _ccbPort.ToString();
                 psi.Environment["CCB_LOG_SDK"] = _logSdk ? "1" : "0";
+                psi.Environment["CCB_AI_PROVIDER"] = _aiGateway.Provider;
+                psi.Environment["CCB_AGENT_MCP_URL"] = $"http://localhost:{_agentMcpPort}/mcp";
                 psi.Environment["CCB_TOKEN_BUDGET_LIMIT"] = _budgetLimit.ToString();
                 psi.Environment["CCB_TOKEN_BUDGET_ACTION"] = _budgetAction;
+                if (!string.IsNullOrEmpty(_aiGateway.ApiBaseUrl))
+                    psi.Environment["CCB_API_BASE_URL"] = _aiGateway.ApiBaseUrl;
+                if (!string.IsNullOrEmpty(_aiGateway.ApiKey))
+                    psi.Environment["CCB_API_KEY"] = _aiGateway.ApiKey;
                 if (!string.IsNullOrEmpty(_ccbToken))
                     psi.Environment["CCB_AUTH_TOKEN"] = _ccbToken;
                 var skills = InternalToolRegistry.SkillRegistry?.GetAll();

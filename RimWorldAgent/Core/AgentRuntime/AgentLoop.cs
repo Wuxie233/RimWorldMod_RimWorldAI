@@ -48,6 +48,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                     UIMessageBus.PushUiMessage(UiMessage.Error($"Token 预算已用尽 ({TokenUsageTracker.TotalAllTokens}/{BudgetLimit})"));
                     return;
                 }
+                DiagnosticsLog.Event("user_chat", new { length = text.Length });
                 ConversationStore?.RecordUserMessage(text);
                 await ws.SendAbort();
                 // 打断运行中的会话时追加 Skill 提示
@@ -107,7 +108,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                 catch (Exception ex)
                 {
                     CoreLog.Warn($"[AgentLoop] 历史查询失败: {ex.Message}");
-                    try { socket.Send(UiMessage.Error($"历史查询失败: {ex.Message}").ToJson()); } catch { }
+                    try { socket.Send(UiMessage.Error($"历史查询失败: {ex.Message}").ToJson()); }
+                    catch (Exception sendEx) { CoreLog.Warn($"[AgentLoop] 发送历史查询错误失败: {sendEx.Message}"); }
                 }
             };
 
@@ -126,7 +128,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                 catch (Exception ex)
                 {
                     CoreLog.Warn($"[AgentLoop] 历史翻页失败: {ex.Message}");
-                    try { socket.Send(UiMessage.Error($"历史翻页失败: {ex.Message}").ToJson()); } catch { }
+                    try { socket.Send(UiMessage.Error($"历史翻页失败: {ex.Message}").ToJson()); }
+                    catch (Exception sendEx) { CoreLog.Warn($"[AgentLoop] 发送历史翻页错误失败: {sendEx.Message}"); }
                 }
             };
 
@@ -144,7 +147,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                 catch (Exception ex)
                 {
                     CoreLog.Warn($"[AgentLoop] 工具统计查询失败: {ex.Message}");
-                    try { socket.Send(UiMessage.Error($"工具统计查询失败: {ex.Message}").ToJson()); } catch { }
+                    try { socket.Send(UiMessage.Error($"工具统计查询失败: {ex.Message}").ToJson()); }
+                    catch (Exception sendEx) { CoreLog.Warn($"[AgentLoop] 发送工具统计错误失败: {sendEx.Message}"); }
                 }
             };
 
@@ -158,12 +162,16 @@ namespace RimWorldAgent.Core.AgentRuntime
             UIMessageBus.OnToolCallRecorded += (toolId, name, input) =>
             {
                 ConversationStore?.RecordToolCall(toolId, name, input);
+                DiagnosticsLog.Event("tool_call", new { toolId, name });
             };
             // tool_result 录制 — 合并 OnToolUse 耗时 + SDK echo 输出
             UIMessageBus.OnToolResultRecorded += (toolId, isError, content) =>
             {
                 var dur = _toolDurations.TryRemove(toolId, out var d) ? d : 0;
                 ConversationStore?.RecordToolResult(toolId, isError, dur, content);
+                DiagnosticsLog.Event("tool_result", new { toolId, isError, durationMs = dur });
+                if (isError)
+                    DiagnosticsLog.Event("tool_error", new { toolId, content = DiagnosticsLog.Truncate(content) });
             };
         }
 
@@ -207,7 +215,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                             ConversationStore?.RecordSystemMessage(err);
                     }
                 }
-                catch { /* best-effort，不影响显示管线 */ }
+                catch (Exception ex) { CoreLog.Debug($"[AgentLoop] 录制显示消息失败: {ex.Message}"); }
             };
         }
 
@@ -266,6 +274,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         /// <summary>执行一次 Agent 会话：发送 prompt → Tool Loop → 写 Memory</summary>
         public static async Task RunSessionAsync(string prompt, McpClient mcp, CcbWebSocket ccbWs)
         {
+            DiagnosticsLog.Event("session_start", new { promptLength = prompt.Length });
             // 复用已在外部暂停的 PaceController（每日 PLAN 等），无则创建
             var paceController = AgentOrchestrator.PaceController;
             if (paceController == null)
@@ -289,6 +298,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             void OnResult(string subtype, string? _)
             {
                 NoteActivity();
+                DiagnosticsLog.Event("turn_result", new { subtype });
                 var pending = Volatile.Read(ref pendingTools);
                 if (AgentOrchestrator.InterruptRequested)
                 {
@@ -303,17 +313,23 @@ namespace RimWorldAgent.Core.AgentRuntime
                     Volatile.Write(ref resultReceived, true);
             }
 
-            async void OnToolUse(string toolId, string toolName, string input)
+            void OnToolUse(string toolId, string toolName, string input)
             {
                 NoteActivity();
                 Interlocked.Increment(ref pendingTools);
+                _ = HandleToolUseAsync(toolId, toolName, input);
+            }
+
+            async Task HandleToolUseAsync(string toolId, string toolName, string input)
+            {
                 try
                 {
-                     await ToolDispatcher.HandleAsync(ccbWs, toolId, toolName, input);
+                    await ToolDispatcher.HandleAsync(ccbWs, toolId, toolName, input);
                 }
                 catch (Exception ex)
                 {
                     CoreLog.Error($"[commander] Tool 执行异常: {ex.Message}");
+                    DiagnosticsLog.Event("tool_exception", new { toolName, type = ex.GetType().Name, error = ex.Message });
                 }
                 finally
                 {
@@ -373,6 +389,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 AgentOrchestrator.PaceController = null;
                 AgentOrchestrator.SessionMcp = null;
                 paceController.Dispose();
+                DiagnosticsLog.Event("session_end");
             }
         }
 

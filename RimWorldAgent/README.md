@@ -1,12 +1,12 @@
 # RimWorld Agent
 
-AI 殖民地操作系统 — 连接 Claude API，让 AI 成为你的 RimWorld 指挥官。
+AI 殖民地操作系统 — 连接可配置 AI 网关，让 AI 成为你的 RimWorld 指挥官。
 
 ## 这是什么？
 
-RimWorld Agent 是一个 AI 运行时，通过 **MCP 协议**与游戏无缝通信，集成 **Claude Agent SDK**，实现 AI 自主管理殖民地。AI 会规划策略、执行操作、应对突发事件——你可以通过对话框观察或随时介入。
+RimWorld Agent 是一个 AI 运行时，通过 **MCP 协议**与游戏无缝通信，支持 Claude Agent SDK、Anthropic、OpenAI、OpenAI-compatible 网关，实现 AI 自主管理殖民地。AI 会规划策略、执行操作、应对突发事件——你可以通过对话框观察或随时介入。
 
-**核心流程**：游戏状态 → MCP 服务器 → Agent 调度循环 → Claude SDK → AI 决策 → MCP 工具调用 → 游戏执行。
+**核心流程**：游戏状态 → MCP 服务器 → Agent 调度循环 → AI Provider → AI 决策 → MCP 工具调用 → 游戏执行。
 
 ## 功能特性
 
@@ -32,7 +32,7 @@ AI 自主在两个阶段间切换：
 
 ### CC Companion 桥接
 
-通过 Node.js 子进程（cc-companion）桥接 Claude Agent SDK，实现流式对话、工具调用、会话管理。Agent 与 SDK 间通过 WebSocket 以 4 层消息协议通信。
+通过 Node.js 子进程（cc-companion）桥接 AI provider。默认保留 Claude Agent SDK，也可切换到 Anthropic、OpenAI 或 OpenAI-compatible 网关；Agent 与 companion 间通过 WebSocket 以兼容 SDK-like 消息协议通信。
 
 ### 100+ 游戏工具代理
 
@@ -114,7 +114,7 @@ RimWorldAgent                         RimWorldMCP
 │ McpClient ────────────→ /mcp ──────→ 100+ 游戏工具        │
 │ McpClient ←──────────── /sse ←────── tick 推送 + 事件     │
 │                      │              │                      │
-│ AgentMcpServer :9878 ←─ tools/call ──────────────────────── SDK 工具调用
+│ AgentMcpServer :9878 ←─ tools/call ──────────────────────── AI 工具调用
 │                      │              │                      │
 │ CcbManager ── spawn ──→ cc-companion (Node.js :19998)     │
 │                      │   WebSocket │                      │
@@ -130,7 +130,7 @@ RimWorldAgent                         RimWorldMCP
 |------|------|------|
 | `:9877` | 游戏 MCP Server | 游戏内工具 + 事件推送 |
 | `:9878` | Agent MCP Server | 代理游戏工具 + 内部工具 |
-| `:19998` | CC Companion | Claude SDK 桥接 |
+| `:19998` | CC Companion | AI provider 桥接 |
 | `:19999` | UIMessageBus | UI 消息广播 |
 
 ## 工具清单
