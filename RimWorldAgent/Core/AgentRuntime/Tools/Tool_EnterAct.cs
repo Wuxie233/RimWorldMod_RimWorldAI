@@ -27,16 +27,19 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
                 speed = speedEl.GetString() ?? "superfast";
             var reason = args?.TryGetProperty("reason", out var reasonEl) == true ? reasonEl.GetString() ?? "" : "";
 
-            var deadline = DateTime.UtcNow.AddSeconds(3);
-            while (AgentOrchestrator.PaceController == null || AgentOrchestrator.SessionMcp == null)
+            var mcp = AgentOrchestrator.SessionMcp ?? AgentEngine.Current?.McpClient;
+            if (mcp == null)
+                return ("无法进入 Act 阶段：MCP 未就绪（Agent 尚未初始化或已关闭），请稍后重试。", false);
+
+            var pace = AgentOrchestrator.PaceController;
+            if (pace == null)
             {
-                if (DateTime.UtcNow > deadline)
-                    return ("无法进入 Act 阶段：会话状态未就绪，请稍后重试。", false);
-                await Task.Delay(100);
+                pace = new GamePaceController();
+                AgentOrchestrator.PaceController = pace;
             }
 
             AgentOrchestrator.EnterActPhase();
-            await AgentOrchestrator.PaceController.ResumeForAction(AgentOrchestrator.SessionMcp, speed);
+            await pace.ResumeForAction(mcp, speed);
             return ($"已进入 Act 阶段，游戏速度: {speed}。{reason}\n\n可使用 get_skills 和 active_skill 工具获取领域知识。", false);
         }
     }
