@@ -27,6 +27,13 @@ namespace RimWorldAgent.Core.AgentRuntime
                         break;
                     case SdkResultMessage rm:
                         result.Add(UiMessage.Result(rm.Subtype, rm.StopReason));
+                        if (rm.Subtype == "error")
+                        {
+                            var errText = !string.IsNullOrEmpty(rm.Result) ? rm.Result
+                                : (rm.Errors.Count > 0 ? string.Join("; ", rm.Errors) : rm.StopReason ?? "未知错误");
+                            CoreLog.Error($"[provider] 回合失败 ({rm.StopReason}): {errText}");
+                            result.Add(UiMessage.Error($"回合失败 ({rm.StopReason}): {errText}"));
+                        }
                         if (rm.DurationMs.HasValue)
                             TokenUsageTracker.AddDuration(rm.DurationMs.Value);
                         break;

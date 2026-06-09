@@ -32,6 +32,7 @@ export async function* runProviderRound(
         yield resultEvent('error', options.startedAt, options.model, usage, 'aborted', 'abort', options.numTurns ?? 0);
         return;
       }
+      console.error(`[provider] 请求失败 model=${options.model} attempt=${attempt}/${options.maxRetries}: ${safeErrorMessage(err)}`);
       if (attempt >= options.maxRetries) {
         yield resultEvent('error', options.startedAt, options.model, usage, safeErrorMessage(err) || lastResult, 'provider_api_error', options.numTurns ?? 0);
         return;
