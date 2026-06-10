@@ -120,10 +120,11 @@ export function providerCapabilities(kind: AgentProviderKind): ProviderCapabilit
     case 'claude-sdk':
       return { supportsThinking: true, supportsStreaming: true, requiresApiKey: false };
     case 'anthropic':
-      return { supportsThinking: false, supportsStreaming: false, requiresApiKey: true };
+      return { supportsThinking: true, supportsStreaming: true, requiresApiKey: true };
     case 'openai':
+      return { supportsThinking: true, supportsStreaming: true, requiresApiKey: true };
     case 'openai-compatible':
-      return { supportsThinking: false, supportsStreaming: false, requiresApiKey: true };
+      return { supportsThinking: false, supportsStreaming: true, requiresApiKey: true };
   }
 }
 

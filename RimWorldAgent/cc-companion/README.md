@@ -110,11 +110,11 @@ Companion 使用项目自有 `AgentProvider` 接口，Claude Agent SDK 只是一
 ## 支持的 Provider
 
 - `claude-sdk`：保留原 Claude Agent SDK 行为，兼容现有会话和 Claude Code 设置来源。
-- `anthropic`：使用 `@anthropic-ai/sdk` 调 Anthropic Messages API，支持 `CCB_API_BASE_URL` 覆盖地址。
-- `openai`：使用官方 `openai` SDK，默认走 OpenAI 官方 API，可用 `CCB_API_BASE_URL` 覆盖。
-- `openai-compatible`：使用官方 `openai` SDK 的 `baseURL` 支持本地网关、代理网关或第三方兼容 `/v1` 服务。
+- `anthropic`：经 Vercel AI SDK（`@ai-sdk/anthropic`）调 Anthropic，支持 `CCB_API_BASE_URL` 覆盖地址；思考开启时启用 extended thinking（需 claude 3.7+ 模型）。
+- `openai`：经 Vercel AI SDK（`@ai-sdk/openai`）调 OpenAI，可用 `CCB_API_BASE_URL` 覆盖；思考开启时启用 reasoning summary（需 gpt-5 / o 系列等 reasoning 模型）。
+- `openai-compatible`：经 `@ai-sdk/openai-compatible` 的 `baseURL` 支持本地网关、代理网关或第三方兼容 `/v1` 服务（reasoning 视网关支持情况，默认不启用）。
 
-非 Claude provider 的工具调用由 companion 的 provider runtime 统一编排：模型发起 tool call，companion 调 Agent MCP `:9878`，再把工具结果回填模型。C# 侧仍接收兼容当前 `SdkMessage` 的 SDK-like JSON，因此 UI、历史和 token 链路不需要直接解析 OpenAI/Anthropic 原始格式。
+非 Claude provider 共用 `agent-runtime/ai-sdk-turn.ts`，基于 Vercel AI SDK `streamText` + `fullStream` 产出真流式 `text-delta` / `reasoning-delta`；工具调用由 companion 的 provider runtime 统一编排：模型发起 tool call，companion 调 Agent MCP `:9878`，再把工具结果回填模型。C# 侧仍接收兼容当前 `SdkMessage` 的 SDK-like JSON，因此 UI、历史和 token 链路不需要直接解析各 provider 原始格式。
 
 运行时会为每次 session rebuild 生成新的 generation guard，旧 iterator 的输出不会再广播到 C#。所有回合都必须以 `result` 终态结束；abort、provider API error、tool loop exhaustion 都会映射为 `result:error`，避免失败在 UI 上看起来像成功。
 
