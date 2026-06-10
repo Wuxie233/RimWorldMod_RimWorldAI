@@ -322,6 +322,7 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             async Task HandleToolUseAsync(string toolId, string toolName, string input)
             {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
                     await ToolDispatcher.HandleAsync(ccbWs, toolId, toolName, input);
@@ -333,6 +334,8 @@ namespace RimWorldAgent.Core.AgentRuntime
                 }
                 finally
                 {
+                    sw.Stop();
+                    _toolDurations[toolId] = sw.Elapsed.TotalMilliseconds;
                     var remaining = Interlocked.Decrement(ref pendingTools);
                     if (remaining == 0 && resultReceived)
                         tcs.TrySetResult(true);

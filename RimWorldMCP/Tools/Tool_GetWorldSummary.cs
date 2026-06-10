@@ -87,15 +87,22 @@ namespace RimWorldMCP.Tools
                     }
                     sb.AppendLine();
 
-                    // ---- 食物 ----
-                    float foodDays = 0f;
-                    foreach (var kv in res.AllCountedAmounts)
+                    // ---- 食物 ----（totalColonists 为 0 时跳过，避免除零得 NaN）
+                    if (totalColonists > 0)
                     {
-                        if (kv.Key.IsNutritionGivingIngestible && kv.Key.ingestible?.HumanEdible == true)
-                            foodDays += kv.Value * kv.Key.ingestible.CachedNutrition / (totalColonists * 1.6f);
+                        float foodDays = 0f;
+                        foreach (var kv in res.AllCountedAmounts)
+                        {
+                            if (kv.Key.IsNutritionGivingIngestible && kv.Key.ingestible?.HumanEdible == true)
+                                foodDays += kv.Value * kv.Key.ingestible.CachedNutrition / (totalColonists * 1.6f);
+                        }
+                        var foodStatus = foodDays < 3f ? "🔴 危机" : foodDays < 5f ? "⚠ 紧张" : "✅ 充足";
+                        sb.AppendLine($"### 食物: {foodStatus} ({foodDays:F1} 天储备, {totalColonists}人)");
                     }
-                    var foodStatus = foodDays < 3f ? "🔴 危机" : foodDays < 5f ? "⚠ 紧张" : "✅ 充足";
-                    sb.AppendLine($"### 食物: {foodStatus} ({foodDays:F1} 天储备, {totalColonists}人)");
+                    else
+                    {
+                        sb.AppendLine("### 食物: （当前无在册殖民者，暂不评估）");
+                    }
                     sb.AppendLine();
 
                     // ---- 威胁 ----

@@ -129,7 +129,7 @@ namespace RimWorldAgent
                         CcbWebSocket.WsLogFilePath = Path.Combine(projectPath!, "ccb-ws-log.txt");
                     AgentLoop.WireUIMessageBus(_engine.CcbWs);
 
-                    var stableMemory = MemoryStore.ReadStableMemory();
+                    var stableMemory = BuildPreferenceText(settings) + "\n\n" + MemoryStore.ReadStableMemory();
                     var configured = await _engine.CcbWs.SendConfigureSessionAsync(stableMemory);
                     CoreLog.Info($"[agent-mod] configure_session 完成: ok={configured}");
                 }
@@ -185,6 +185,27 @@ namespace RimWorldAgent
             Scribe_Values.Look(ref tasksJson, "agentTasks", "");
             if (Scribe.mode == LoadSaveMode.LoadingVars)
                 _pendingTasksJson = tasksJson ?? "";
+        }
+
+        private static string BuildPreferenceText(AgentModSettings? s)
+        {
+            var lang = (s?.ReplyLanguage) switch
+            {
+                "zh" => "始终使用简体中文回复",
+                "en" => "Always reply in English",
+                _ => "跟随用户输入所用的语言回复"
+            };
+            var auto = (s?.Autonomy) switch
+            {
+                "conservative" => "保守：重要操作前先说明并尽量征求确认",
+                "autonomous" => "高自主：减少打扰，自行决策执行，仅在关键风险时提示",
+                _ => "平衡：常规操作直接执行，重大决策简要说明"
+            };
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("## 用户偏好");
+            sb.AppendLine($"- 回复语言：{lang}");
+            sb.AppendLine($"- 自主度：{auto}");
+            return sb.ToString().TrimEnd();
         }
 
         public void ShutdownEngine()

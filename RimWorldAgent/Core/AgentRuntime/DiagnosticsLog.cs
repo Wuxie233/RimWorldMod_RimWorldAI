@@ -11,6 +11,7 @@ namespace RimWorldAgent.Core.AgentRuntime
     {
         private static readonly object _lock = new object();
         private static readonly JsonSerializerOptions _json = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        private static readonly UTF8Encoding _utf8NoBom = new UTF8Encoding(false);
 
         public static string RunId { get; private set; } = "";
         public static string? FilePath { get; private set; }
@@ -47,7 +48,7 @@ namespace RimWorldAgent.Core.AgentRuntime
                 };
                 if (data != null) record["data"] = data;
                 var line = JsonSerializer.Serialize(record, _json) + "\n";
-                lock (_lock) { File.AppendAllText(path, line, Encoding.UTF8); }
+                lock (_lock) { File.AppendAllText(path, line, _utf8NoBom); }
             }
             catch (Exception ex)
             {

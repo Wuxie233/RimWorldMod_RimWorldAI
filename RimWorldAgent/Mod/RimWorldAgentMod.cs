@@ -15,6 +15,7 @@ namespace RimWorldAgent
         public static RimWorldAgentMod Instance { get; private set; } = null!;
         public AgentModSettings Settings { get; private set; }
         private Vector2 _scrollPos;
+        private float _settingsContentHeight;
         private Task<AiModelCatalogResult>? _modelFetchTask;
         private string _modelFetchProvider = "";
         private string _modelFetchBaseUrl = "";
@@ -49,7 +50,7 @@ namespace RimWorldAgent
         {
             ApplyCompletedModelFetch();
 
-            var h = 1280f;
+            var h = _settingsContentHeight > 0f ? _settingsContentHeight : 1600f;
             Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, h);
             Widgets.BeginScrollView(inRect, ref _scrollPos, viewRect);
             var listing = new Listing_Standard();
@@ -174,6 +175,27 @@ namespace RimWorldAgent
                 Settings.PlanSpeed = speedValues[speedIdx];
             }
 
+            var langLabels = new[] { "auto (跟随用户语言)", "中文", "English" };
+            var langValues = new[] { "auto", "zh", "en" };
+            var langIdx = Array.IndexOf(langValues, Settings.ReplyLanguage);
+            if (langIdx < 0) langIdx = 0;
+            if (listing.ButtonText($"回复语言: {langLabels[langIdx]}"))
+            {
+                langIdx = (langIdx + 1) % langValues.Length;
+                Settings.ReplyLanguage = langValues[langIdx];
+            }
+
+            listing.Gap(4f);
+            var autoLabels = new[] { "conservative (保守, 多确认)", "balanced (平衡)", "autonomous (高自主, 少打扰)" };
+            var autoValues = new[] { "conservative", "balanced", "autonomous" };
+            var autoIdx = Array.IndexOf(autoValues, Settings.Autonomy);
+            if (autoIdx < 0) autoIdx = 1;
+            if (listing.ButtonText($"自主度: {autoLabels[autoIdx]}"))
+            {
+                autoIdx = (autoIdx + 1) % autoValues.Length;
+                Settings.Autonomy = autoValues[autoIdx];
+            }
+
             listing.Label("Skills 目录 (留空用默认)");
             Settings.SkillsDir = listing.TextEntry(Settings.SkillsDir);
 
@@ -231,6 +253,7 @@ namespace RimWorldAgent
             listing.CheckboxLabeled("☐ C#↔CCB WS 日志 (ccb-ws-log.txt)", ref Settings.LogCcbWsMessages,
                 "开启后 C# 将 WebSocket 收发 JSON 记录写入 project 目录下的 ccb-ws-log.txt。");
 
+            _settingsContentHeight = listing.CurHeight + 24f;
             listing.End();
             Widgets.EndScrollView();
         }

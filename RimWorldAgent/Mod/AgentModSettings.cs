@@ -34,6 +34,10 @@ namespace RimWorldAgent
         public string SkillsDir = "";
         public string ProjectPath = "";
 
+        // 用户偏好（注入 systemPrompt，跨存档全局；provider/语言中立）
+        public string ReplyLanguage = "auto";
+        public string Autonomy = "balanced";
+
         // CC Companion 依赖
         public bool CcbAutoInstall = true;
 
@@ -67,6 +71,8 @@ namespace RimWorldAgent
             Scribe_Values.Look(ref PlanSpeed, "planSpeed", "paused");
             Scribe_Values.Look(ref SkillsDir, "skillsDir", "");
             Scribe_Values.Look(ref ProjectPath, "projectPath", "");
+            Scribe_Values.Look(ref ReplyLanguage, "replyLanguage", "auto");
+            Scribe_Values.Look(ref Autonomy, "autonomy", "balanced");
             Scribe_Values.Look(ref CcbAutoInstall, "ccbAutoInstall", true);
             Scribe_Values.Look(ref BridgeHost, "bridgeHost", "127.0.0.1");
             Scribe_Values.Look(ref BridgePort, "bridgePort", 19999);

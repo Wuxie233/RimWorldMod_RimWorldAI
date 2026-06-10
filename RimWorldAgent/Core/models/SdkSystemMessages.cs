@@ -72,6 +72,7 @@ namespace RimWorldAgent.Core.CcbManager
         [JsonPropertyName("analytics_disabled")] public bool? AnalyticsDisabled { get; set; }
         [JsonPropertyName("product_feedback_disabled")] public bool? ProductFeedbackDisabled { get; set; }
         [JsonPropertyName("memory_paths")] public SdkMemoryPaths? MemoryPaths { get; set; }
+        [JsonPropertyName("provider_capabilities")] public JsonElement? ProviderCapabilities { get; set; }
     }
 
     // ===== status — 运行状态变更 =====
