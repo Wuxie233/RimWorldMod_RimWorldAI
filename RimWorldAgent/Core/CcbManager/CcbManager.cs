@@ -28,6 +28,11 @@ namespace RimWorldAgent.Core.CcbManager
         private bool _starting; // 防止 Start() 重入
         private int _lastRestartTick; // 上次重启的 Environment.TickCount，防抖
         private const int RestartCooldownMs = 3000; // 重启冷却 3s
+        private int _restartWindowStart; // 当前熔断统计窗口起点
+        private int _restartCount;       // 窗口内重启次数
+        private bool _restartGivenUp;    // 已熔断：放弃自动重启
+        private const int RestartWindowMs = 30000;   // 熔断统计窗口 30s
+        private const int MaxRestartsInWindow = 5;   // 窗口内超过此次数即熔断
 
         public bool IsReady => _ready;
         /// <summary>TickAndRestart 重启了 companion 进程时为 true，调用方检查后应清除</summary>
@@ -211,24 +216,49 @@ namespace RimWorldAgent.Core.CcbManager
         {
             if (_process == null || _process.HasExited)
             {
+                if (_restartGivenUp) return false;
+
                 // 防抖：3s 内不重复重启，避免高频崩溃循环
                 var now = Environment.TickCount;
                 if (_lastRestartTick != 0 && unchecked(now - _lastRestartTick) < RestartCooldownMs)
                     return false;
                 _lastRestartTick = now;
 
+                // 熔断：30s 窗口内崩溃超过阈值即停止自动重启，避免无限重启拖垮游戏帧率
+                if (_restartWindowStart == 0 || unchecked(now - _restartWindowStart) > RestartWindowMs)
+                {
+                    _restartWindowStart = now;
+                    _restartCount = 0;
+                }
+                _restartCount++;
+                if (_restartCount > MaxRestartsInWindow)
+                {
+                    _restartGivenUp = true;
+                    CoreLog.Error($"[CcbManager] companion {RestartWindowMs / 1000}s 内连续崩溃 {_restartCount} 次，已停止自动重启以保护游戏帧率。" +
+                        "通常是 cc-companion 依赖缺失：请在 Mod 设置「CC Companion 依赖」点重新安装(npm install)，或删除 cc-companion/node_modules 后重载存档。");
+                    Stop();
+                    return false;
+                }
+
                 if (_process != null)
                 {
                     try
                     {
                         var exitCode = _process.ExitCode;
-                        CoreLog.Error($"[CcbManager] 进程异常退出 (code={exitCode})，重启...");
+                        CoreLog.Error($"[CcbManager] 进程异常退出 (code={exitCode})，重启... ({_restartCount}/{MaxRestartsInWindow})");
                     }
                     catch (Exception ex) { CoreLog.Error($"[CcbManager] 读取退出码异常: {ex.GetType().Name}: {ex.Message}"); }
                 }
                 Stop();
                 WasRestarted = true;
                 return Start();
+            }
+
+            // 进程在运行且已就绪 → 视为本次启动成功，重置熔断计数
+            if (_ready)
+            {
+                _restartCount = 0;
+                _restartWindowStart = 0;
             }
             return true;
         }

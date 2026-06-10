@@ -22,7 +22,32 @@ namespace RimWorldAgent
         public static bool IsInstalled(string? companionDir)
         {
             if (string.IsNullOrEmpty(companionDir) || !Directory.Exists(companionDir)) return false;
-            return Directory.Exists(Path.Combine(companionDir!, "node_modules"));
+            var nodeModules = Path.Combine(companionDir!, "node_modules");
+            if (!Directory.Exists(nodeModules)) return false;
+            // 仅检查 node_modules 文件夹会漏掉"package.json 新增依赖但旧 node_modules 缺包"的情况，
+            // 导致 companion 启动时 import 失败崩溃。这里逐项校验声明依赖是否都已落地。
+            try
+            {
+                var pkgPath = Path.Combine(companionDir!, "package.json");
+                if (!File.Exists(pkgPath)) return true;
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(pkgPath));
+                if (doc.RootElement.TryGetProperty("dependencies", out var deps)
+                    && deps.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    foreach (var dep in deps.EnumerateObject())
+                    {
+                        var rel = dep.Name.Replace('/', Path.DirectorySeparatorChar);
+                        if (!Directory.Exists(Path.Combine(nodeModules, rel)))
+                            return false;
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CoreLog.Info($"[CompanionInstaller] 依赖完整性检查失败({ex.GetType().Name})，保守触发重装: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>异步安装（CCB 启动前 await，确保 node_modules 就绪）</summary>
