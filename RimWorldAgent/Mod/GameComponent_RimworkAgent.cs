@@ -17,6 +17,7 @@ namespace RimWorldAgent
         private IConversationStore? _convStore;
         private bool _initialized;
         private int _lastTick;
+        private string _pendingTasksJson = "";
 
         public GameComponent_RimWorldAgent(Game game) { }
 
@@ -36,8 +37,6 @@ namespace RimWorldAgent
                     return;
                 }
                 _initialized = true;
-
-                ToolDispatcher.ResetTaskCount();
 
                 var modRoot = Path.GetDirectoryName(
                     typeof(GameComponent_RimWorldAgent).Assembly.Location) ?? ".";
@@ -116,6 +115,12 @@ namespace RimWorldAgent
                 AgentLoop.ConversationStore = _convStore;
                 CoreLog.Info($"[agent-mod] SqliteConversationStore 已就绪 (save_id={sessionId})");
 
+                // 按存档隔离记忆/诊断，并恢复任务表（从 ExposeData 暂存的 JSON）
+                SessionStore.SaveId = sessionId!;
+                MemoryStore.EnsureInitialized();
+                TaskStore.RestoreFromJson(_pendingTasksJson);
+                _pendingTasksJson = "";
+
                 _dbStore = dbStore;
 
                 if (_engine.CcbWs != null)
@@ -123,6 +128,10 @@ namespace RimWorldAgent
                     if (settings?.LogCcbWsMessages == true)
                         CcbWebSocket.WsLogFilePath = Path.Combine(projectPath!, "ccb-ws-log.txt");
                     AgentLoop.WireUIMessageBus(_engine.CcbWs);
+
+                    var stableMemory = MemoryStore.ReadStableMemory();
+                    var configured = await _engine.CcbWs.SendConfigureSessionAsync(stableMemory);
+                    CoreLog.Info($"[agent-mod] configure_session 完成: ok={configured}");
                 }
                 else
                 {
@@ -170,6 +179,12 @@ namespace RimWorldAgent
         {
             base.ExposeData();
             _dbStore?.ScribeExpose();
+
+            // 任务表随存档持久化：保存时导出当前 TaskStore，读取时暂存待 InitAgentRuntime 恢复
+            var tasksJson = Scribe.mode == LoadSaveMode.Saving ? TaskStore.ExportJson() : "";
+            Scribe_Values.Look(ref tasksJson, "agentTasks", "");
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+                _pendingTasksJson = tasksJson ?? "";
         }
 
         public void ShutdownEngine()

@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 
 namespace RimWorldAgent.Core.AgentRuntime
 {
@@ -105,6 +107,43 @@ namespace RimWorldAgent.Core.AgentRuntime
             int count;
             lock (_lock) { count = _tasks.Count; _tasks.Clear(); _nextId = 1; }
             if (count > 0) UIMessageBus.PushSdkTasks();
+        }
+
+        private class Snapshot
+        {
+            public int NextId { get; set; } = 1;
+            public List<TaskItem> Tasks { get; set; } = new();
+        }
+
+        /// <summary>序列化当前任务表（含 _nextId）为 JSON，供存档持久化。</summary>
+        public static string ExportJson()
+        {
+            lock (_lock)
+                return JsonSerializer.Serialize(new Snapshot { NextId = _nextId, Tasks = new List<TaskItem>(_tasks) });
+        }
+
+        /// <summary>从 JSON 恢复任务表：先清空（含跨存档 static 残留），再载入本存档任务。json 为空则仅清空。</summary>
+        public static void RestoreFromJson(string? json)
+        {
+            lock (_lock)
+            {
+                _tasks.Clear();
+                _nextId = 1;
+                if (!string.IsNullOrEmpty(json))
+                {
+                    try
+                    {
+                        var snap = JsonSerializer.Deserialize<Snapshot>(json!);
+                        if (snap != null)
+                        {
+                            if (snap.Tasks != null) _tasks.AddRange(snap.Tasks);
+                            if (snap.NextId > 0) _nextId = snap.NextId;
+                        }
+                    }
+                    catch (Exception ex) { CoreLog.Warn($"[TaskStore] 恢复任务失败: {ex.GetType().Name}: {ex.Message}"); }
+                }
+            }
+            UIMessageBus.PushSdkTasks();
         }
     }
 }

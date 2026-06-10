@@ -34,6 +34,7 @@ public class CcbWebSocket : IDisposable
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private TaskCompletionSource<(bool ok, string message)>? _configAck;
+    private TaskCompletionSource<bool>? _sessionConfiguredAck;
 
     /// <summary>WS 通信日志文件路径，设为 null 禁用</summary>
     public static string? WsLogFilePath { get; set; }
@@ -149,6 +150,20 @@ public class CcbWebSocket : IDisposable
     {
         await SendJson(new { type = "abort" });
         CoreLog.Info("[CcbWS] 已发送中断请求");
+    }
+
+    /// <summary>注入稳定记忆并触发 companion 延迟创建 SDK 会话；等待 session_configured 确认。</summary>
+    public async Task<bool> SendConfigureSessionAsync(string stableMemory, int timeoutMs = 15000)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        _sessionConfiguredAck = tcs;
+        await SendJson(new { type = "configure_session", stableMemory });
+        CoreLog.Info("[CcbWS] 已发送 configure_session，等待 companion 确认...");
+        var done = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs));
+        if (done == tcs.Task) return tcs.Task.Result;
+        _sessionConfiguredAck = null;
+        CoreLog.Warn("[CcbWS] configure_session 确认超时");
+        return false;
     }
 
     /// <summary>运行时热切换 AI 网关；等待 companion 的 config-update-ack。</summary>
@@ -267,6 +282,27 @@ public class CcbWebSocket : IDisposable
         }
     }
 
+    private bool TryHandleSessionConfigured(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var t) || t.GetString() != "session_configured")
+                return false;
+            var ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == JsonValueKind.True;
+            CoreLog.Info($"[CcbWS] 收到 session_configured ok={ok}");
+            _sessionConfiguredAck?.TrySetResult(ok);
+            _sessionConfiguredAck = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CoreLog.Warn($"[CcbWS] 解析 session_configured 失败: {ex.Message}");
+            return false;
+        }
+    }
+
     private async Task ReceiveLoop(CancellationToken ct)
     {
         var buf = new byte[8192];
@@ -300,6 +336,8 @@ public class CcbWebSocket : IDisposable
     {
         WsLog("←", json);
         if (json.IndexOf("config-update-ack", StringComparison.Ordinal) >= 0 && TryHandleConfigAck(json))
+            return;
+        if (json.IndexOf("session_configured", StringComparison.Ordinal) >= 0 && TryHandleSessionConfigured(json))
             return;
         try
         {

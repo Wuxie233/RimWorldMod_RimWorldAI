@@ -4,6 +4,7 @@ import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
 import { CONFIG, Thinking, errorMessage } from '../companion/config.js';
 import { buildSystemPrompt } from '../rimworld/context.js';
+import { buildStableMemorySegment, buildSkillsSection } from '../agent-runtime/system-prompt.js';
 import { Options, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
 import { AsyncStream } from '../agent-runtime/async-stream.js';
 import type { AgentEvent, AgentInboundMessage } from '../providers/types.js';
@@ -24,7 +25,9 @@ export function createSession(sdk: ClaudeAgentSdkModule, abortController?: Abort
     const lower = n.toLowerCase();
     if (lower !== n) claudeMdExcludes.push(lower);
   };
-  let cursor = resolve(CONFIG.projectPath);
+  const projectRoot = resolve(CONFIG.projectPath);
+  addExclude(join(projectRoot, 'CLAUDE.md'));
+  let cursor = projectRoot;
   while (true) {
     const parent = dirname(cursor);
     if (parent === cursor) break;
@@ -33,12 +36,8 @@ export function createSession(sdk: ClaudeAgentSdkModule, abortController?: Abort
   }
   addExclude(join(homedir(), '.claude', 'CLAUDE.md'));
 
-  const skills = CONFIG.skills || [];
-  let skillsSection = '';
-  if (skills.length > 0) {
-    skillsSection = '\n## 可用领域知识 (Skills)\n以下是可使用 active_skill 工具加载的领域知识。处理相关任务前先激活对应 skill 获取详细指导。\n\n' +
-      skills.map(s => `- **${s.split(':')[0]}**: ${s.substring(s.indexOf(':') + 1).trim()}`).join('\n');
-  }
+  const memorySegment = buildStableMemorySegment();
+  const skillsSection = buildSkillsSection();
 
   const options = {
     cwd: CONFIG.projectPath,
@@ -49,9 +48,9 @@ export function createSession(sdk: ClaudeAgentSdkModule, abortController?: Abort
     disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'EnterWorktree', 'ExitWorktree', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'Skill', 'Task', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'Glob', 'Grep', 'Read'],
     autoCompactEnabled: true,
     includePartialMessages: true,
-    settingSources: CONFIG.settingSources,
+    settingSources: [],
     claudeMdExcludes,
-    systemPrompt: [buildSystemPrompt(CONFIG.projectPath), skillsSection, SYSTEM_PROMPT_DYNAMIC_BOUNDARY],
+    systemPrompt: [buildSystemPrompt(CONFIG.projectPath), memorySegment, skillsSection, SYSTEM_PROMPT_DYNAMIC_BOUNDARY].filter(p => p !== ''),
     stderr: (data: string | Buffer) => {
       process.stderr.write(`[sdk] ${typeof data === 'string' ? data : data.toString()}`);
     },

@@ -29,6 +29,14 @@ namespace RimWorldAgent.Core.AgentRuntime
             sb.AppendLine(await BuildWorldSummaryAsync());
             sb.AppendLine();
 
+            // Layer 2: 当前任务表快照（动态，每 wake 重新读取；稳定记忆走 systemPrompt，不在此注入）
+            var taskSnapshot = BuildTaskSnapshot();
+            if (!string.IsNullOrEmpty(taskSnapshot))
+            {
+                sb.AppendLine(taskSnapshot);
+                sb.AppendLine();
+            }
+
             // Layer 6: Runtime info
             sb.AppendLine("## 运行信息");
             sb.AppendLine($"- Day: {AgentOrchestrator.GameDay}");
@@ -60,6 +68,17 @@ namespace RimWorldAgent.Core.AgentRuntime
             {
                 return "## 殖民地状态\n（MCP 连接不可用）";
             }
+        }
+
+        private static string BuildTaskSnapshot()
+        {
+            var pending = TaskStore.GetPending();
+            if (pending.Count == 0) return "";
+            var sb = new StringBuilder();
+            sb.AppendLine("## 当前任务表（未完成）");
+            foreach (var t in pending)
+                sb.AppendLine($"- #{t.Id} [{t.Status}] {t.Subject}");
+            return sb.ToString().TrimEnd();
         }
     }
 }

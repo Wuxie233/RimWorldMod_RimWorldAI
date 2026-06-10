@@ -110,7 +110,13 @@ namespace RimWorldAgent
 
             // CCB ↔ UIMessageBus 双向中继（SDK↔UiMessage 转换在 AgentCore）
             if (engine.CcbWs != null)
+            {
                 AgentLoop.WireUIMessageBus(engine.CcbWs);
+                SessionStore.SaveId = "exe-session";
+                MemoryStore.EnsureInitialized();
+                var configured = await engine.CcbWs.SendConfigureSessionAsync(MemoryStore.ReadStableMemory());
+                Console.WriteLine($"[Core] configure_session 完成: ok={configured}");
+            }
 
             // 初始化完成后显式推送一次预算状态
             UIMessageBus.PushUiMessage(UiMessage.BudgetStatus(

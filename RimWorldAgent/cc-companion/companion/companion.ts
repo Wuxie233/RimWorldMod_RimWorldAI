@@ -194,6 +194,13 @@ async function main() {
           debugLog('收到 abort');
           sessionManager.abort('ws abort');
           break;
+        case 'configure_session': {
+          CONFIG.stableMemory = typeof msg.stableMemory === 'string' ? msg.stableMemory : '';
+          debugLog(`configure_session stableMemory.len=${CONFIG.stableMemory.length}`);
+          sessionManager.configure();
+          sendJson(ws, { type: 'session_configured', ok: true });
+          break;
+        }
         case 'config-update':
           void handleConfigUpdate(ws, msg);
           break;

@@ -15,6 +15,8 @@ export interface CompanionConfig {
   agentMcpUrl: string;
   modelName: string;
   settingSources: string[];
+  /** 稳定记忆块（用户偏好 + 通用知识 + 本局 AGENTS.md），由 C# 经 configure_session 注入，写入 systemPrompt。 */
+  stableMemory: string;
   skills: string[];
   logSdk: boolean;
   debug: boolean;
@@ -54,6 +56,7 @@ export const CONFIG: CompanionConfig = {
   settingSources: process.env.CCB_SETTING_SOURCES
     ? process.env.CCB_SETTING_SOURCES.split(',').map(s => s.trim())
     : ['user', 'project', 'local'],
+  stableMemory: '',
   skills: parseSkillsJson(process.env.CCB_SKILLS),
   logSdk: process.env.CCB_LOG_SDK === '1' || process.env.CCB_LOG_SDK === 'true',
   debug: process.env.CCB_DEBUG === '1' || process.env.CCB_DEBUG === 'true',
