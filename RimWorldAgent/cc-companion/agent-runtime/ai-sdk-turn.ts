@@ -101,6 +101,18 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
     aggregateText += stepText;
     console.log(`[ai-sdk-turn] turn ${turn} done text=${stepText.length}c reasoning=${thinkingStarted} toolCalls=${toolCalls.length} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}`);
 
+    // 空响应检测：首轮零 token + 零内容 = 调用未真正成功（多为 provider 与模型不匹配，或网关/API 静默返回错误）。
+    // 不报错的话上层只会看到 success 却没有任何回复，用户无从判断；这里转成明确错误结果。
+    if (turn === 1 && stepText.length === 0 && toolCalls.length === 0
+        && (u.inputTokens ?? 0) === 0 && (u.outputTokens ?? 0) === 0) {
+      const hint = `模型返回空响应（provider=${config.kind} model=${config.model}）。`
+        + `常见原因：provider 与模型不匹配（如用 anthropic 调 gpt-* 模型，或反之），或网关/API 返回了错误。`
+        + `请确认：GPT 系模型用 openai / openai-compatible，Claude 系模型才用 anthropic / claude-sdk。`;
+      console.error(`[ai-sdk-turn] ${hint}`);
+      yield resultEvent('error', startedAt, config.model, usage, hint, 'empty_response', turn);
+      return;
+    }
+
     const normalizedCalls: AgentToolCall[] = toolCalls.map(c => ({ id: c.toolCallId, name: c.toolName, input: c.input }));
     yield assistantEvent(config.model, stepText, normalizedCalls, usage, normalizedCalls.length > 0 ? 'tool_use' : 'end_turn');
     const usageEvent = streamUsage(usage);
