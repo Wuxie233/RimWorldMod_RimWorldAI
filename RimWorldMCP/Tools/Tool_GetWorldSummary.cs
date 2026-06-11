@@ -44,9 +44,10 @@ namespace RimWorldMCP.Tools
                     int day = Find.TickManager.TicksGame / 60000;
                     int hour = (Find.TickManager.TicksGame / 2500) % 24;
                     var season = GenLocalDate.Season(map).ToString();
+                    int dayOfQuadrum = GenLocalDate.DayOfQuadrum(map);
 
                     // ---- 基础信息 ----
-                    sb.AppendLine($"## 殖民地状态: {season}, Day {day}, {hour:D2}:00");
+                    sb.AppendLine($"## 殖民地状态: {season}第{dayOfQuadrum}天, Day {day}, {hour:D2}:00");
                     sb.AppendLine();
 
                     // ---- 资源 ----

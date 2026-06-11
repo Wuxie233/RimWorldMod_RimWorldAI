@@ -188,7 +188,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             if (!ccbReady) _logInfo("[AgentEngine] CCB: 未就绪 (事件转发不可用)");
 
             GamePaceController.PlanSpeed = _cfg.PlanSpeed;
-            _ctx = new ContextBuilder(_mcp);
+            _ctx = new ContextBuilder(_mcp, _gameState);
 
             return ccbReady;
         }
@@ -323,6 +323,8 @@ namespace RimWorldAgent.Core.AgentRuntime
         private async Task RunAgent(bool isPlan = false, bool isInterrupted = false)
         {
             GamePaceController.ShouldSkipResume = null;
+            await _gameState.SyncGameStatusAsync();
+            AgentOrchestrator.GameTick = _gameState.GameTick;
             AgentOrchestrator.BeginSession();
             _logInfo($"[AgentEngine] 唤醒 commander (Day={_gameState.GameDay}, Plan={isPlan}, Interrupted={isInterrupted})");
 

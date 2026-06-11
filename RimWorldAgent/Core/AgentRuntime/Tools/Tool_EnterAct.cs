@@ -22,9 +22,9 @@ namespace RimWorldAgent.Core.AgentRuntime.Tools
 
         public async Task<(string result, bool exit)> ExecuteAsync(JsonElement? args)
         {
-            var speed = "superfast";
+            var speed = "fast";
             if (args?.TryGetProperty("speed", out var speedEl) == true)
-                speed = speedEl.GetString() ?? "superfast";
+                speed = speedEl.GetString() ?? "fast";
             var reason = args?.TryGetProperty("reason", out var reasonEl) == true ? reasonEl.GetString() ?? "" : "";
 
             var mcp = AgentOrchestrator.SessionMcp ?? AgentEngine.Current?.McpClient;

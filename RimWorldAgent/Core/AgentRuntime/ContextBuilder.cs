@@ -7,8 +7,13 @@ namespace RimWorldAgent.Core.AgentRuntime
     public class ContextBuilder
     {
         private readonly Mcp.McpClient _mcp;
+        private readonly IGameStateProvider _gameState;
 
-        public ContextBuilder(Mcp.McpClient mcp) { _mcp = mcp; }
+        public ContextBuilder(Mcp.McpClient mcp, IGameStateProvider gameState)
+        {
+            _mcp = mcp;
+            _gameState = gameState;
+        }
 
         /// <summary>构建 Agent 完整 Prompt。</summary>
         public async Task<string> BuildAsync(bool isInterrupted = false)
@@ -39,7 +44,9 @@ namespace RimWorldAgent.Core.AgentRuntime
 
             // Layer 6: Runtime info
             sb.AppendLine("## 运行信息");
-            sb.AppendLine($"- Day: {AgentOrchestrator.GameDay}");
+            sb.AppendLine($"- 日期: {BuildDateText()}");
+            sb.AppendLine($"- 当前速度: {_gameState.SpeedLabel}");
+            sb.AppendLine($"- 暂停状态: {(_gameState.IsPaused ? "已暂停" : "运行中")}");
 
             // Layer 7: 当前模式指引
             var phaseHint = AgentOrchestrator.CurrentPhase switch
@@ -68,6 +75,12 @@ namespace RimWorldAgent.Core.AgentRuntime
             {
                 return "## 殖民地状态\n（MCP 连接不可用）";
             }
+        }
+
+        private string BuildDateText()
+        {
+            var season = string.IsNullOrEmpty(_gameState.SeasonName) ? "未知季节" : _gameState.SeasonName;
+            return $"{season}第{_gameState.DayOfQuadrum}天, Day {_gameState.GameDay}, {_gameState.GameHour:D2}:00";
         }
 
         private static string BuildTaskSnapshot()

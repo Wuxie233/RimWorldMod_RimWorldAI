@@ -31,7 +31,7 @@ namespace RimWorldAgent.Core.AgentRuntime
         }
 
         /// <summary>进入 Act 阶段，恢复游戏（toggle_pause 幂等）</summary>
-        public async Task ResumeForAction(McpClient mcp, string speed = "superfast")
+        public async Task ResumeForAction(McpClient mcp, string speed = "fast")
         {
             await _opLock.WaitAsync();
             try
@@ -53,7 +53,7 @@ namespace RimWorldAgent.Core.AgentRuntime
             await _opLock.WaitAsync();
             try
             {
-                await CallTogglePause(mcp, "superfast");
+                await CallTogglePause(mcp, "fast");
                 CoreLog.Info("[GamePace] 已恢复游戏 (EnsureResumed)");
             }
             finally { _opLock.Release(); }

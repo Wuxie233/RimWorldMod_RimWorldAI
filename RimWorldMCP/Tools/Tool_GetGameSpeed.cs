@@ -46,9 +46,9 @@ namespace RimWorldMCP.Tools
             return tm.CurTimeSpeed switch
             {
                 TimeSpeed.Normal => "1 倍速",
-                TimeSpeed.Fast => "2 倍速",
-                TimeSpeed.Superfast => "3 倍速",
-                TimeSpeed.Ultrafast => "最快",
+                TimeSpeed.Fast => "3 倍速",
+                TimeSpeed.Superfast => "6 倍速",
+                TimeSpeed.Ultrafast => "15 倍速",
                 _ => tm.CurTimeSpeed.ToString()
             };
         }
@@ -62,6 +62,10 @@ namespace RimWorldMCP.Tools
                 var paused = IsPaused();
                 var tick = tm?.TicksGame ?? 0;
                 var day = tick / 60000;
+                var hour = (tick / 2500) % 24;
+                var map = Find.CurrentMap;
+                var season = map != null ? GenLocalDate.Season(map).ToString() : null;
+                int? dayOfQuadrum = map != null ? GenLocalDate.DayOfQuadrum(map) : null;
 
                 // 检测窗口
                 int windowsOpen = 0;
@@ -84,6 +88,9 @@ namespace RimWorldMCP.Tools
                     speed,
                     tick,
                     day,
+                    hour,
+                    season,
+                    day_of_quadrum = dayOfQuadrum,
                     windows_open = windowsOpen,
                     windows_names = windowsNames
                 });
