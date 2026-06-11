@@ -184,19 +184,19 @@ async function main() {
           if (typeof msg.text !== 'string') return;
           applyThinking(readThinking(msg.thinking));
           const sessionName = typeof msg.session === 'string' ? msg.session : '';
-          debugLog(`chat session=${sessionName} len=${msg.text.length}`);
+          log(`chat session=${sessionName} len=${msg.text.length}`);
           const userMsg: AgentInboundMessage = { type: 'user', message: { role: 'user', content: msg.text } };
           sdkLog('→', JSON.stringify(userMsg));
           sessionManager.enqueue(userMsg);
           break;
         }
         case 'abort':
-          debugLog('收到 abort');
+          log('收到 abort 指令');
           sessionManager.abort('ws abort');
           break;
         case 'configure_session': {
           CONFIG.stableMemory = typeof msg.stableMemory === 'string' ? msg.stableMemory : '';
-          debugLog(`configure_session stableMemory.len=${CONFIG.stableMemory.length}`);
+          log(`configure_session stableMemory.len=${CONFIG.stableMemory.length}`);
           sessionManager.configure();
           sendJson(ws, { type: 'session_configured', ok: true });
           break;

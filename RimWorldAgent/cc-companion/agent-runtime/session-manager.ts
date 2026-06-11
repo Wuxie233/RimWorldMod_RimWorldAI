@@ -66,6 +66,7 @@ export class SessionManager {
 
   abort(reason = 'abort'): void {
     const old = this.current;
+    this.log(`abort: reason=${reason} current=${old?.generationId ?? 'none'}`);
     if (old) {
       old.abortController.abort(reason);
       old.session.inputStream.done();
@@ -85,6 +86,7 @@ export class SessionManager {
     const generationId = randomUUID();
     const abortController = new AbortController();
     const session = this.provider.createSession({ abortController, options: { generationId } });
+    this.log(`session created ${generationId} (provider=${this.provider.kind} model=${this.provider.config.model})`);
     return { generationId, abortController, session };
   }
 

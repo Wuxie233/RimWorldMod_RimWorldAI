@@ -16,6 +16,7 @@ import {
   userToolResultEvent,
 } from './sdk-like-events.js';
 import type { AgentEvent, AgentToolCall, AgentUsage, ProviderCapabilities, ProviderConfig } from '../providers/types.js';
+import { safeErrorMessage } from './logging.js';
 
 export interface AiSdkTurnParams {
   model: LanguageModel;
@@ -39,6 +40,7 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
 
   const availableTools = await toolRuntime.listTools();
   yield systemInitEvent(config.kind, config.model, availableTools, capabilities);
+  console.log(`[ai-sdk-turn] start provider=${config.kind} model=${config.model} thinking=${providerOptions ? 'on' : 'off'} tools=${availableTools.length}`);
 
   const tools: ToolSet = {};
   for (const def of availableTools) {
@@ -54,8 +56,9 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
   let turn = 0;
 
   while (turn < config.maxToolTurns) {
-    if (signal?.aborted) return;
+    if (signal?.aborted) { console.log(`[ai-sdk-turn] signal aborted before turn ${turn + 1}`); return; }
     turn++;
+    console.log(`[ai-sdk-turn] turn ${turn} -> streamText`);
 
     const result = streamText({
       model,
@@ -71,17 +74,23 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
     let thinkingStarted = false;
     let stepText = '';
 
-    for await (const part of result.fullStream) {
-      if (part.type === 'reasoning-delta') {
-        if (!thinkingStarted) { yield streamThinkingStart(0, Date.now() - startedAt); thinkingStarted = true; }
-        yield streamThinkingDelta(part.text);
-      } else if (part.type === 'text-delta') {
-        if (!textStarted) { yield streamTextStart(0, Date.now() - startedAt); textStarted = true; }
-        yield streamTextDelta(part.text);
-        stepText += part.text;
-      } else if (part.type === 'error') {
-        throw part.error;
+    try {
+      for await (const part of result.fullStream) {
+        if (part.type === 'reasoning-delta') {
+          if (!thinkingStarted) { yield streamThinkingStart(0, Date.now() - startedAt); thinkingStarted = true; }
+          yield streamThinkingDelta(part.text);
+        } else if (part.type === 'text-delta') {
+          if (!textStarted) { yield streamTextStart(0, Date.now() - startedAt); textStarted = true; }
+          yield streamTextDelta(part.text);
+          stepText += part.text;
+        } else if (part.type === 'error') {
+          console.error(`[ai-sdk-turn] turn ${turn} stream error part: ${safeErrorMessage(part.error)}`);
+          throw part.error;
+        }
       }
+    } catch (streamErr) {
+      console.error(`[ai-sdk-turn] turn ${turn} fullStream 异常 (provider=${config.kind} model=${config.model}): ${safeErrorMessage(streamErr)}`);
+      throw streamErr;
     }
 
     if (textStarted || thinkingStarted) yield streamBlockStop();
@@ -90,6 +99,7 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
     const u = await result.usage;
     usage = { inputTokens: u.inputTokens, outputTokens: u.outputTokens };
     aggregateText += stepText;
+    console.log(`[ai-sdk-turn] turn ${turn} done text=${stepText.length}c reasoning=${thinkingStarted} toolCalls=${toolCalls.length} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}`);
 
     const normalizedCalls: AgentToolCall[] = toolCalls.map(c => ({ id: c.toolCallId, name: c.toolName, input: c.input }));
     yield assistantEvent(config.model, stepText, normalizedCalls, usage, normalizedCalls.length > 0 ? 'tool_use' : 'end_turn');

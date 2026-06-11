@@ -81,6 +81,10 @@ namespace RimWorldAgent
             var listing = new Listing_Standard();
             listing.Begin(viewRect);
 
+            // 渲染护栏：任一控件抛异常不再导致整页空白；错误显示并写日志，listing 在 finally 保证收尾
+            try
+            {
+
             if (Find.CurrentMap != null)
             {
                 GUI.color = new Color(0.85f, 0.78f, 0.4f, 1f);
@@ -262,8 +266,19 @@ namespace RimWorldAgent
             }
 
             _settingsContentHeight = listing.CurHeight + 24f;
-            listing.End();
-            Widgets.EndScrollView();
+            }
+            catch (Exception ex)
+            {
+                GUI.color = new Color(1f, 0.45f, 0.4f, 1f);
+                listing.Label($"设置页渲染异常：{ex.GetType().Name}: {ex.Message}\n（已写入日志；可点窗口右上角 X 或底部「关闭」退出）");
+                GUI.color = Color.white;
+                CoreLog.Error($"[settings] DoSettingsWindowContents 渲染异常: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+            }
+            finally
+            {
+                listing.End();
+                Widgets.EndScrollView();
+            }
         }
 
         private void DrawModelCatalogControls(Listing_Standard listing)

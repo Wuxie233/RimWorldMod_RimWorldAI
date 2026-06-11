@@ -28,7 +28,8 @@ export async function* runProviderRound(
       }
       return;
     } catch (err: unknown) {
-      if (options.signal?.aborted || timeout.signal.aborted && timeout.reason === 'abort') {
+      if (options.signal?.aborted || (timeout.signal.aborted && timeout.reason === 'abort')) {
+        console.error(`[provider] 回合中断 model=${options.model} reason=${options.signal?.aborted ? 'external-abort(会话中断/provider切换)' : 'timeout'} detail=${safeErrorMessage(err)}`);
         yield resultEvent('error', options.startedAt, options.model, usage, 'aborted', 'abort', options.numTurns ?? 0);
         return;
       }
