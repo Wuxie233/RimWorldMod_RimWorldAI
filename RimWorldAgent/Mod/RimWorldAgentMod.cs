@@ -75,7 +75,7 @@ namespace RimWorldAgent
         {
             ApplyCompletedModelFetch();
 
-            var h = _settingsContentHeight > 0f ? _settingsContentHeight : 1600f;
+            var h = Mathf.Max(_settingsContentHeight > 100f ? _settingsContentHeight : 1600f, inRect.height);
             Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, h);
             Widgets.BeginScrollView(inRect, ref _scrollPos, viewRect);
             var listing = new Listing_Standard();
@@ -265,9 +265,8 @@ namespace RimWorldAgent
                     "开启后 C# 将 WebSocket 收发 JSON 记录写入 project 目录下的 ccb-ws-log.txt。");
             }
 
-            _settingsContentHeight = listing.CurHeight + 24f;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is UnityEngine.ExitGUIException))
             {
                 GUI.color = new Color(1f, 0.45f, 0.4f, 1f);
                 listing.Label($"设置页渲染异常：{ex.GetType().Name}: {ex.Message}\n（已写入日志；可点窗口右上角 X 或底部「关闭」退出）");
@@ -276,8 +275,13 @@ namespace RimWorldAgent
             }
             finally
             {
+                var contentHeight = listing.CurHeight;
+                _settingsContentHeight = contentHeight + 24f;
                 listing.End();
                 Widgets.EndScrollView();
+                // 布局诊断：内容高度异常偏小 = 分组未渲染（被滚动视图裁切的征兆），记录实测值便于精准定位
+                if (contentHeight < 200f)
+                    CoreLog.Warn($"[settings] 内容高度异常偏小 CurHeight={contentHeight:F0} scroll={_scrollPos.y:F0} viewH={h:F0}（分组可能未渲染）");
             }
         }
 
