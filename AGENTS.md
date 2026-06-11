@@ -74,7 +74,8 @@ CodeGraph 初始化 / 同步：
 - C# 使用 4 空格缩进；JSON/XML/Markdown/YAML 使用 2 空格缩进；遵守 `.editorconfig`。
 - 禁止空 `catch`，只有 `OperationCanceledException` 允许空处理；其他异常必须记录异常类型和 `ex.Message`。
 - 日志不得写入 token、密码、密钥；提交前清理 `[CCGUI_DEBUG]`。
-- commit 信息使用简体中文 + Conventional Commits；未经用户明确要求不要提交。
+- commit 信息使用简体中文 + Conventional Commits。
+- **交付习惯（默认自动，无需逐次确认）**：每完成一处经验证（`tsc --noEmit` / `dotnet build` 0 error）的改动后，默认自动 `commit` + `push` 到 `origin/main`，并重新打包测试 zip 上传公网门户（temp.wuxie233.com，走 public-file-portal）把下载链接给用户实测；逻辑独立的改动拆成多个 commit。仅当用户当轮明确说“先别提交/先别打包”时才暂缓。打包＝`dotnet build Release` →`zip publish/` 三个 mod，**不走** Steam Workshop 推送脚本。
 - `publish/`、`bin/`、`obj/`、`.codegraph/` 是生成物，不进入版本库。
 - 用户当前是本地二开自用：测试以手动放入 RimWorld 本地 Mods 目录并在游戏内加载为准；不要运行原作者的 Steam Workshop 推送脚本或 `steamcmd +workshop_build_item`，除非用户明确要求发布。
 
