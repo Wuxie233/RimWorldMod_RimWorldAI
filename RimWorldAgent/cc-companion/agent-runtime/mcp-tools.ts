@@ -35,6 +35,10 @@ function toolToDefinition(tool: McpTool): AgentToolDefinition {
   };
 }
 
+function sortTools(tools: AgentToolDefinition[]): AgentToolDefinition[] {
+  return tools.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+}
+
 function callResultContent(result: McpCallToolResult): unknown {
   if ('content' in result) return result.content;
   if ('toolResult' in result) return result.toolResult;
@@ -58,14 +62,14 @@ export class McpToolRuntime {
     try {
       const client = await this.getClient();
       const result = await client.listTools();
-      this.tools = result.tools.map(toolToDefinition);
+      this.tools = sortTools(result.tools.map(toolToDefinition));
       this.toolsLoadedAt = Date.now();
       return this.tools;
     } catch (err: unknown) {
       await this.reset();
       const client = await this.getClient();
       const result = await client.listTools();
-      this.tools = result.tools.map(toolToDefinition);
+      this.tools = sortTools(result.tools.map(toolToDefinition));
       this.toolsLoadedAt = Date.now();
       return this.tools;
     }

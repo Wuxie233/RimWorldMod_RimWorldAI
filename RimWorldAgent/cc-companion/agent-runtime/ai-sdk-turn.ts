@@ -50,6 +50,7 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
   const userMessage: ModelMessage = { role: 'user', content: text };
   const messages: ModelMessage[] = [...history.getHistory(), userMessage];
   const pendingHistory: ModelMessage[] = [userMessage];
+  const systemPrompt = buildAgentSystemPrompt();
 
   let usage: AgentUsage | undefined;
   let aggregateText = '';
@@ -62,7 +63,7 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
 
     const result = streamText({
       model,
-      system: buildAgentSystemPrompt(),
+      system: systemPrompt,
       messages,
       tools,
       stopWhen: stepCountIs(1),
@@ -97,8 +98,16 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
 
     const toolCalls = await result.toolCalls;
     const u = await result.usage;
+    const pm = await result.providerMetadata;
+    const cachedIn = (u as any).cachedInputTokens
+      ?? (pm?.openai as any)?.cachedPromptTokens
+      ?? (pm?.anthropic as any)?.cacheReadInputTokens
+      ?? 0;
+    const inTok = u.inputTokens ?? 0;
+    const hitPct = inTok > 0 ? Math.round((cachedIn / inTok) * 100) : 0;
     usage = { inputTokens: u.inputTokens, outputTokens: u.outputTokens };
     aggregateText += stepText;
+    console.log(`[ai-sdk-turn] turn ${turn} cache in=${inTok} cached=${cachedIn} hit=${hitPct}%`);
     console.log(`[ai-sdk-turn] turn ${turn} done text=${stepText.length}c reasoning=${thinkingStarted} toolCalls=${toolCalls.length} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}`);
 
     // 空响应检测：首轮零 token + 零内容 = 调用未真正成功（多为 provider 与模型不匹配，或网关/API 静默返回错误）。
