@@ -9,7 +9,7 @@ namespace RimWorldMCP.Tools
     public class Tool_TogglePause : ITool, INoMapRequired
     {
         public string Name => "toggle_pause";
-        public string Description => "切换暂停或设置游戏速度。传 speed 参数直接设速度，不传则切换暂停（恢复时默认 6 倍速）。";
+        public string Description => "切换暂停或设置游戏速度。传 speed 参数直接设速度，不传则切换暂停（恢复时默认 3 倍速）。";
 
         public JsonElement InputSchema => JsonSerializer.SerializeToElement(new
         {
@@ -19,7 +19,7 @@ namespace RimWorldMCP.Tools
                 speed = new
                 {
                     type = "string",
-                    description = "可选。目标速度: paused(暂停), normal(1x), fast(3x), superfast(6x), ultrafast(15x)"
+                    description = "可选。目标速度: paused(暂停), normal(1x), fast(2x), superfast(3x), ultrafast(最快)"
                 }
             }
         });
@@ -28,9 +28,9 @@ namespace RimWorldMCP.Tools
         {
             { "paused",    (TimeSpeed.Paused,    "已暂停") },
             { "normal",    (TimeSpeed.Normal,    "1 倍速") },
-            { "fast",      (TimeSpeed.Fast,      "3 倍速") },
-            { "superfast", (TimeSpeed.Superfast, "6 倍速") },
-            { "ultrafast", (TimeSpeed.Ultrafast, "15 倍速") },
+            { "fast",      (TimeSpeed.Fast,      "2 倍速") },
+            { "superfast", (TimeSpeed.Superfast, "3 倍速") },
+            { "ultrafast", (TimeSpeed.Ultrafast, "最快") },
         };
 
         public async Task<ToolResult> ExecuteAsync(JsonElement? args)
@@ -75,7 +75,7 @@ namespace RimWorldMCP.Tools
                         tm.TogglePaused();
 
                     var nowPaused = tm.Paused;
-                    string state = nowPaused ? "已暂停" : (wasPaused ? "运行中（6 倍速）" : "运行中");
+                    string state = nowPaused ? "已暂停" : (wasPaused ? "运行中（3 倍速）" : "运行中");
 
                     // 收集无法切换的原因
                     var reasons = new List<string>();

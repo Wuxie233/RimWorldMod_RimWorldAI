@@ -48,9 +48,9 @@ namespace RimWorldAgent
             return tickManager.CurTimeSpeed switch
             {
                 TimeSpeed.Normal => "1 倍速",
-                TimeSpeed.Fast => "3 倍速",
-                TimeSpeed.Superfast => "6 倍速",
-                TimeSpeed.Ultrafast => "15 倍速",
+                TimeSpeed.Fast => "2 倍速",
+                TimeSpeed.Superfast => "3 倍速",
+                TimeSpeed.Ultrafast => "最快",
                 _ => tickManager.CurTimeSpeed.ToString()
             };
         }
