@@ -105,7 +105,16 @@ export async function* runAiSdkTurn(params: AiSdkTurnParams): AsyncIterable<Agen
       ?? 0;
     const inTok = u.inputTokens ?? 0;
     const hitPct = inTok > 0 ? Math.round((cachedIn / inTok) * 100) : 0;
-    usage = { inputTokens: u.inputTokens, outputTokens: u.outputTokens };
+    // 缓存命中统计归一化为互不重叠的桶，喂给 C# UI 的 Anthropic 形状公式 cacheRead/(totalInput+cacheRead+cacheCreate)。
+    // OpenAI 的 inputTokens 已含 cached，需减出非缓存部分避免分母重复计数；Anthropic 的 inputTokens 本就 disjoint，原样透传。
+    const isOpenAiLike = config.kind === 'openai' || config.kind === 'openai-compatible';
+    const cacheCreate = (pm?.anthropic as any)?.cacheCreationInputTokens ?? 0;
+    usage = {
+      inputTokens: isOpenAiLike ? Math.max(0, inTok - cachedIn) : inTok,
+      outputTokens: u.outputTokens,
+      cacheReadInputTokens: cachedIn,
+      cacheCreationInputTokens: isOpenAiLike ? 0 : cacheCreate,
+    };
     aggregateText += stepText;
     console.log(`[ai-sdk-turn] turn ${turn} cache in=${inTok} cached=${cachedIn} hit=${hitPct}%`);
     console.log(`[ai-sdk-turn] turn ${turn} done text=${stepText.length}c reasoning=${thinkingStarted} toolCalls=${toolCalls.length} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}`);
